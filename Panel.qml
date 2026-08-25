@@ -1585,7 +1585,46 @@ Panel {
                 }
 
                 Rectangle {
-                  visible: root.icalUrls.length > 0
+                  visible: root.clearedUrls.length > 0
+                  width: undoLabel.implicitWidth + Style.space(30)
+                  height: Style.space(32)
+                  radius: Style.cornerRadius
+                  color: undoMouse.containsMouse ? Color.accent : "transparent"
+                  border.width: 1
+                  border.color: Color.accent
+
+                  Text {
+                    id: undoLabel
+                    anchors.centerIn: parent
+                    text: "Undo"
+                    color: undoMouse.containsMouse ? "white" : Color.accent
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.body
+                    font.bold: true
+                  }
+
+                  MouseArea {
+                    id: undoMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      var entry = { id: root.moduleName }
+                      for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
+                      entry.icalUrl = JSON.stringify(root.clearedUrls)
+                      root.settings = entry
+                      if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
+                      if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+                        root.bar.shell.updateEntryInline(root.moduleName, entry)
+                      root.clearedUrls = []
+                      root.authStatus = "iCal feeds restored"
+                      Qt.callLater(root.refresh)
+                    }
+                  }
+                }
+
+                Rectangle {
+                  visible: root.icalUrls.length > 0 && root.clearedUrls.length === 0
                   width: icalClearLabel2.implicitWidth + Style.space(30)
                   height: Style.space(32)
                   radius: Style.cornerRadius
@@ -1877,47 +1916,8 @@ Panel {
                 }
               }
             }
-                }
-
-                Rectangle {
-                  visible: root.clearedUrls.length > 0
-                  width: icalUndoLabel.implicitWidth + Style.space(30)
-                  height: Style.space(32)
-                  radius: Style.cornerRadius
-                  color: undoMouse.containsMouse ? Color.accent : "transparent"
-                  border.width: 1
-                  border.color: Color.accent
-
-                  Text {
-                    id: icalUndoLabel
-                    anchors.centerIn: parent
-                    text: "Undo"
-                    color: undoMouse.containsMouse ? "white" : Color.accent
-                    font.family: root.contentFontFamily
-                    font.pixelSize: Style.font.body
-                    font.bold: true
-                  }
-
-                  MouseArea {
-                    id: undoMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                      var entry = { id: root.moduleName }
-                      for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
-                      entry.icalUrl = JSON.stringify(root.clearedUrls)
-                      root.settings = entry
-                      if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
-                      if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
-                        root.bar.shell.updateEntryInline(root.moduleName, entry)
-                      root.clearedUrls = []
-                      root.authStatus = "iCal feeds restored"
-                      Qt.callLater(root.refresh)
-                    }
-                  }
-                }
-              }
+          }
+        }
       }
     }
   }
