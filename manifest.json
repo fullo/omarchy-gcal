@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "fullo.gcal",
+  "id": "io.github.fullo.gcal",
   "name": "Google Calendar",
   "version": "1.0.0",
   "author": "fullo",

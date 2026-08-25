@@ -7,7 +7,7 @@ import "Model.js" as Model
 
 BarWidget {
   id: root
-  moduleName: "fullo.gcal"
+  moduleName: "io.github.fullo.gcal"
 
   property var allEvents: []
   property string barText: ""
@@ -56,7 +56,7 @@ BarWidget {
   onSettingsChanged: injectPanel()
 
   IpcHandler {
-    target: "fullo.gcal"
+    target: "io.github.fullo.gcal"
     function refresh(): void { root.refresh() }
     function open(): void { root.open() }
     function close(): void { root.close() }

@@ -7,8 +7,8 @@ import "Model.js" as Model
 
 Panel {
   id: root
-  moduleName: "fullo.gcal"
-  ipcTarget: "fullo.gcal"
+  moduleName: "io.github.fullo.gcal"
+  ipcTarget: "io.github.fullo.gcal"
   manageIpc: false
 
   property var anchorItem: null

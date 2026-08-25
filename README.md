@@ -1,4 +1,4 @@
-# fullo.gcal — Google Calendar for Omarchy
+# io.github.fullo.gcal — Google Calendar for Omarchy
 
 A bar widget plugin for [Omarchy](https://omarchy.org/) that displays upcoming Google Calendar events directly in the status bar, with a full-featured panel for browsing your schedule.
 
@@ -32,10 +32,16 @@ omarchy plugin add https://github.com/fullo/omarchy-gcal.git --enable
 Or manually clone into your plugins directory:
 
 ```bash
-git clone https://github.com/fullo/omarchy-gcal.git ~/.config/omarchy/plugins/fullo.gcal
+git clone https://github.com/fullo/omarchy-gcal.git ~/.config/omarchy/plugins/io.github.fullo.gcal
 ```
 
 The plugin will appear in the bar after the next shell reload (automatic on file save).
+
+## Removal
+
+```bash
+omarchy plugin remove io.github.fullo.gcal
+```
 
 ## Configuration
 
@@ -43,7 +49,7 @@ The plugin is configured through the Omarchy shell bar layout in `~/.config/omar
 
 ```json
 {
-  "id": "fullo.gcal"
+  "id": "io.github.fullo.gcal"
 }
 ```
 
