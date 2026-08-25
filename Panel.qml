@@ -392,16 +392,14 @@ Panel {
                 height: Style.space(28)
                 radius: Style.cornerRadius
                 color: root.activeTab === index
-                  ? Style.selectedStateColor(root.contentForeground, Color.accent)
+                  ? Color.accent
                   : (tabMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent")
 
                 Text {
                   id: tabLabel
                   anchors.centerIn: parent
                   text: modelData
-                  color: root.activeTab === index
-                    ? Style.hoverStateColor(root.contentForeground, Color.accent)
-                    : root.contentForeground
+                  color: root.activeTab === index ? "white" : root.contentForeground
                   font.family: root.contentFontFamily
                   font.pixelSize: Style.font.caption
                   font.letterSpacing: 1
