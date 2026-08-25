@@ -47,6 +47,8 @@ Panel {
   property int viewYear: new Date().getFullYear()
   property int viewMonth: new Date().getMonth()
   readonly property string todayKey: Model.dateKeyFromDate(new Date())
+  property int monthEventsPage: 0
+  readonly property int monthEventsPerPage: 10
 
   // Calendar filter
   readonly property var enabledCals: Model.settingsEnabledCals(setting("enabledCalendars", ""))
@@ -144,12 +146,23 @@ Panel {
     var next = Model.stepMonth(viewYear, viewMonth, delta)
     root.viewYear = next.year
     root.viewMonth = next.month
+    root.monthEventsPage = 0
   }
 
   function goToToday() {
     var now = new Date()
     root.viewYear = now.getFullYear()
     root.viewMonth = now.getMonth()
+    root.monthEventsPage = 0
+  }
+
+  function monthEventsForView() {
+    var prefix = root.viewYear + "-" + Model.pad2(root.viewMonth + 1) + "-"
+    var filtered = []
+    for (var i = 0; i < allEvents.length; i++) {
+      if (allEvents[i].date && allEvents[i].date.indexOf(prefix) === 0) filtered.push(allEvents[i])
+    }
+    return filtered
   }
 
   // ---- OAuth ----
@@ -389,20 +402,13 @@ Panel {
                   }
 
                   Column {
-                    width: Style.space(68)
+                    width: Style.space(80)
                     anchors.verticalCenter: parent.verticalCenter
                     Text {
-                      text: Model.isAllDayEvent(modelData) ? "All day" : (modelData.startTime || "")
+                      text: Model.isAllDayEvent(modelData) ? "All day" : Model.formatEventTime(modelData)
                       color: evMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
                       font.family: root.contentFontFamily
                       font.pixelSize: Style.font.body
-                    }
-                    Text {
-                      visible: !Model.isAllDayEvent(modelData) && modelData.endTime !== ""
-                      text: "to " + (modelData.endTime || "")
-                      color: Qt.darker(root.contentForeground, 1.6)
-                      font.family: root.contentFontFamily
-                      font.pixelSize: Style.font.caption
                     }
                   }
 
@@ -417,7 +423,7 @@ Panel {
                   Column {
                     id: evDetails
                     anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - Style.space(68) - Style.space(10) - Style.spacing.hairline - Style.space(10)
+                    width: parent.width - Style.space(80) - Style.space(8) - Style.spacing.hairline - Style.space(8)
                     Text {
                       width: parent.width
                       text: modelData.title || "(No title)"
@@ -708,9 +714,176 @@ Panel {
                           cursorShape: evCount > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
                           onClicked: {
                             if (evCount > 0) root.setTab(0)
-                          }
-                        }
-                      }
+              }
+            }
+
+            // ---- Month events list ----
+            Column {
+              width: parent.width
+              spacing: Style.space(4)
+
+              // Hairline
+              Rectangle {
+                width: parent.width
+                height: Style.spacing.hairline
+                color: root.contentForeground
+                opacity: 0.12
+              }
+
+              property var monthEvents: root.monthEventsForView()
+              property int totalPages: Math.ceil(monthEvents.length / root.monthEventsPerPage)
+              property int pageStart: root.monthEventsPage * root.monthEventsPerPage
+              property var pageEvents: monthEvents.slice(pageStart, pageStart + root.monthEventsPerPage)
+
+              Text {
+                text: root.monthEventsForView().length + " EVENTS"
+                color: Qt.darker(root.contentForeground, 1.4)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption
+                font.letterSpacing: 1
+                font.bold: true
+              }
+
+              Repeater {
+                model: parent.pageEvents
+
+                Rectangle {
+                  required property var modelData
+                  width: parent.parent.parent.width
+                  height: mevRow.implicitHeight + Style.space(8)
+                  radius: Style.cornerRadius
+                  color: mevMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
+                  opacity: Model.isEventPast(modelData) ? 0.4 : 1.0
+
+                  Row {
+                    id: mevRow
+                    anchors.left: parent.left
+                    anchors.leftMargin: Style.space(10)
+                    anchors.right: parent.right
+                    anchors.rightMargin: Style.space(10)
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Style.space(8)
+
+                    Rectangle {
+                      width: Style.space(6)
+                      height: Style.space(6)
+                      radius: Style.space(3)
+                      color: Model.eventCalendarColor(modelData)
+                      anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Text {
+                      width: Style.space(60)
+                      anchors.verticalCenter: parent.verticalCenter
+                      text: Model.isAllDayEvent(modelData) ? "All day" : (modelData.startTime || "")
+                      color: mevMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
+                      font.family: root.contentFontFamily
+                      font.pixelSize: Style.font.body
+                    }
+
+                    Text {
+                      width: parent.parent.parent.width - Style.space(60) - Style.space(8) - Style.space(8)
+                      anchors.verticalCenter: parent.verticalCenter
+                      text: modelData.title || "(No title)"
+                      color: mevMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
+                      font.family: root.contentFontFamily
+                      font.pixelSize: Style.font.body
+                      elide: Text.ElideRight
+                    }
+                  }
+
+                  MouseArea {
+                    id: mevMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: modelData.link !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: root.openEvent(modelData.link)
+                  }
+                }
+              }
+
+              // Pagination
+              Row {
+                visible: parent.totalPages > 1
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: Style.space(6)
+
+                Rectangle {
+                  visible: root.monthEventsPage > 0
+                  width: prevLabel.implicitWidth + Style.space(16)
+                  height: Style.space(24)
+                  radius: Style.cornerRadius
+                  color: prevMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
+                  border.width: 1
+                  border.color: Qt.darker(root.contentForeground, 1.4)
+
+                  Text {
+                    id: prevLabel
+                    anchors.centerIn: parent
+                    text: "← Prev"
+                    color: root.contentForeground
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.caption
+                  }
+
+                  MouseArea {
+                    id: prevMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.monthEventsPage = Math.max(0, root.monthEventsPage - 1)
+                  }
+                }
+
+                Text {
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: (root.monthEventsPage + 1) + " / " + parent.parent.totalPages
+                  color: Qt.darker(root.contentForeground, 1.5)
+                  font.family: root.contentFontFamily
+                  font.pixelSize: Style.font.caption
+                }
+
+                Rectangle {
+                  visible: root.monthEventsPage < parent.parent.totalPages - 1
+                  width: nextLabel.implicitWidth + Style.space(16)
+                  height: Style.space(24)
+                  radius: Style.cornerRadius
+                  color: nextMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
+                  border.width: 1
+                  border.color: Qt.darker(root.contentForeground, 1.4)
+
+                  Text {
+                    id: nextLabel
+                    anchors.centerIn: parent
+                    text: "Next →"
+                    color: root.contentForeground
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.caption
+                  }
+
+                  MouseArea {
+                    id: nextMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    preventStealing: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.monthEventsPage = Math.min(parent.parent.parent.totalPages - 1, root.monthEventsPage + 1)
+                  }
+                }
+              }
+
+              Text {
+                visible: parent.monthEvents.length === 0
+                width: parent.width
+                text: "No events this month"
+                color: Qt.darker(root.contentForeground, 1.5)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.bodySmall
+                font.italic: true
+                horizontalAlignment: Text.AlignHCenter
+              }
+            }
+          }
                     }
                   }
                 }
@@ -931,6 +1104,7 @@ Panel {
                   id: toggleMouse1
                   anchors.fill: parent
                   hoverEnabled: true
+                  preventStealing: true
                   cursorShape: Qt.PointingHandCursor
                   onClicked: {
                     var entry = { id: root.moduleName }
@@ -993,6 +1167,7 @@ Panel {
                   id: toggleMouse2
                   anchors.fill: parent
                   hoverEnabled: true
+                  preventStealing: true
                   cursorShape: Qt.PointingHandCursor
                   onClicked: {
                     var entry = { id: root.moduleName }
