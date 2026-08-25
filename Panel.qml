@@ -133,7 +133,7 @@ Panel {
         pending--
         if (pending > 0) return
         // Filter by enabled calendars
-        var enabled = root.enabledCals
+        var enabled = root.enabledCals || []
         if (enabled && enabled.length > 0) {
           allCalEvents = allCalEvents.filter(function(e) {
             return enabled.indexOf(e.calendar) >= 0
@@ -158,6 +158,7 @@ Panel {
           var fallbackName = feedName ? decodeURIComponent(feedName[1]) : "iCal Feed " + (idx + 1)
           calsList.push({ id: "ical-" + idx, name: fallbackName, access: "read-only", color: icalColors[idx % icalColors.length] })
           Model.fetchIcal(url, function(result) {
+            if (!result) { finishIcal(); return }
             var events = result.events || []
             var extractedName = result.calName || ""
             if (extractedName) calsList[idx].name = extractedName
@@ -168,7 +169,7 @@ Panel {
         })(urls[ui], ui)
       }
     } else {
-      root.fetchError = "Add an iCal URL or connect Google Calendar in Setup"
+      root.fetchError = "Add an iCal URL in Setup"
     }
   }
 
@@ -327,7 +328,7 @@ Panel {
               }
               Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Google Calendar"
+                text: "iCal Calendar"
                 color: root.contentForeground
                 font.family: root.contentFontFamily
                 font.pixelSize: 24

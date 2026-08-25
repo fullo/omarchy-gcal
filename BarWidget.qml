@@ -48,7 +48,7 @@ BarWidget {
       for (var i = 0; i < urls.length; i++) {
         (function(url) {
           Model.fetchIcal(url, function(result) {
-            merged = merged.concat(result.events || [])
+            if (result) merged = merged.concat(result.events || [])
             finish()
           })
         })(urls[i])
