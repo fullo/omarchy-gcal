@@ -88,15 +88,21 @@ Panel {
       return
     }
     fetchError = ""
-    Model.fetchAgenda(root.settings, enabledCals, function(events) {
-      root.allEvents = events
-      root.todayEvents = Model.eventsForToday(events)
-      root.weekEvents = Model.eventsForThisWeek(events)
-      root.eventGroups = Model.groupEventsByDay(root.weekEvents)
-      if (events.length === 0) root.fetchError = "No upcoming events"
-    })
-    Model.fetchCalendars(root.settings, function(cals) {
-      root.calendars = cals
+    OAuth.getValidToken(root.settings, function(ok, token) {
+      if (!ok) {
+        fetchError = "Authentication expired — re-authenticate in Setup tab"
+        return
+      }
+      Model.fetchAgenda(token, enabledCals, function(events) {
+        root.allEvents = events
+        root.todayEvents = Model.eventsForToday(events)
+        root.weekEvents = Model.eventsForThisWeek(events)
+        root.eventGroups = Model.groupEventsByDay(root.weekEvents)
+        if (events.length === 0) root.fetchError = "No upcoming events"
+      })
+      Model.fetchCalendars(token, function(cals) {
+        root.calendars = cals
+      })
     })
   }
 

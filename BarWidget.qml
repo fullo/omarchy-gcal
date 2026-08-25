@@ -23,10 +23,17 @@ BarWidget {
       barTooltip = "Google Calendar — click to setup"
       return
     }
-    Model.fetchAgenda(root.settings, enabledCals, function(events) {
-      root.allEvents = events
-      root.barText = Model.formatBarLabel(events)
-      root.barTooltip = Model.formatBarTooltip(events)
+    OAuth.getValidToken(root.settings, function(ok, token) {
+      if (!ok) {
+        barText = "󰃭"
+        barTooltip = "Google Calendar — auth expired"
+        return
+      }
+      Model.fetchAgenda(token, enabledCals, function(events) {
+        root.allEvents = events
+        root.barText = Model.formatBarLabel(events)
+        root.barTooltip = Model.formatBarTooltip(events)
+      })
     })
   }
 

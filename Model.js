@@ -1,5 +1,4 @@
 .pragma Library
-.import "OAuth.js" as OAuth
 
 var MS_PER_DAY = 86400000
 var CALENDAR_API = "https://www.googleapis.com/calendar/v3"
@@ -7,39 +6,35 @@ var WEEKDAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "fr
 
 // ---- Google Calendar API ----
 
-function fetchAgenda(tokens, enabledCals, callback) {
-    OAuth.getValidToken(tokens, function(ok, token) {
-        if (!ok) { callback([]); return }
-        var now = new Date()
-        var end = new Date(now.getTime() + 30 * MS_PER_DAY)
-        var url = CALENDAR_API + "/calendars/primary/events"
-            + "?timeMin=" + now.toISOString()
-            + "&timeMax=" + end.toISOString()
-            + "&singleEvents=true"
-            + "&orderBy=startTime"
-            + "&maxResults=50"
-        _apiGet(token, url, function(data) {
-            if (!data || !data.items) { callback([]); return }
-            var events = data.items.map(function(ev) { return _parseEvent(ev) })
-            if (enabledCals && enabledCals.length > 0) {
-                events = events.filter(function(e) {
-                    return enabledCals.indexOf(e.calendar) >= 0
-                })
-            }
-            callback(events)
-        })
+function fetchAgenda(token, enabledCals, callback) {
+    if (!token) { callback([]); return }
+    var now = new Date()
+    var end = new Date(now.getTime() + 30 * MS_PER_DAY)
+    var url = CALENDAR_API + "/calendars/primary/events"
+        + "?timeMin=" + now.toISOString()
+        + "&timeMax=" + end.toISOString()
+        + "&singleEvents=true"
+        + "&orderBy=startTime"
+        + "&maxResults=50"
+    _apiGet(token, url, function(data) {
+        if (!data || !data.items) { callback([]); return }
+        var events = data.items.map(function(ev) { return _parseEvent(ev) })
+        if (enabledCals && enabledCals.length > 0) {
+            events = events.filter(function(e) {
+                return enabledCals.indexOf(e.calendar) >= 0
+            })
+        }
+        callback(events)
     })
 }
 
-function fetchCalendars(tokens, callback) {
-    OAuth.getValidToken(tokens, function(ok, token) {
-        if (!ok) { callback([]); return }
-        _apiGet(token, CALENDAR_API + "/users/me/calendarList", function(data) {
-            if (!data || !data.items) { callback([]); return }
-            callback(data.items.map(function(cal) {
-                return { id: cal.id, name: cal.summary, access: cal.accessRole }
-            }))
-        })
+function fetchCalendars(token, callback) {
+    if (!token) { callback([]); return }
+    _apiGet(token, CALENDAR_API + "/users/me/calendarList", function(data) {
+        if (!data || !data.items) { callback([]); return }
+        callback(data.items.map(function(cal) {
+            return { id: cal.id, name: cal.summary, access: cal.accessRole }
+        }))
     })
 }
 
