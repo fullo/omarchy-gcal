@@ -25,7 +25,6 @@ Panel {
   property string fetchError: ""
 
   // Auth state
-  property var tokens: OAuth.loadTokens()
   property bool authenticating: false
   property string authCodeInput: ""
   property string authStatus: ""
@@ -84,19 +83,19 @@ Panel {
   }
 
   function refresh() {
-    if (!OAuth.isConfigured(tokens)) {
+    if (!OAuth.isConfigured(root.settings)) {
       fetchError = "Configure OAuth credentials first"
       return
     }
     fetchError = ""
-    Model.fetchAgenda(tokens, enabledCals, function(events) {
+    Model.fetchAgenda(root.settings, enabledCals, function(events) {
       root.allEvents = events
       root.todayEvents = Model.eventsForToday(events)
       root.weekEvents = Model.eventsForThisWeek(events)
       root.eventGroups = Model.groupEventsByDay(root.weekEvents)
       if (events.length === 0) root.fetchError = "No upcoming events"
     })
-    Model.fetchCalendars(tokens, function(cals) {
+    Model.fetchCalendars(root.settings, function(cals) {
       root.calendars = cals
     })
   }
@@ -122,18 +121,15 @@ Panel {
   // ---- OAuth ----
 
   function startAuth() {
-    if (!tokens || !tokens.client_id || !tokens.client_secret) {
+    if (!root.settings || !root.settings.client_id || !root.settings.client_secret) {
       authStatus = "Enter client ID and secret first"
       return
     }
     authenticating = true
     authStatus = "Opening browser..."
     authCodeInput = ""
-    root.authUrl = OAuth.authUrl(tokens.client_id)
-    Qt.openUrlExternally(root.authUrl)
+    Qt.openUrlExternally(OAuth.authUrl(root.settings.client_id))
   }
-
-  property string authUrl: ""
 
   function submitAuthCode() {
     if (authCodeInput.trim() === "") {
@@ -141,30 +137,40 @@ Panel {
       return
     }
     authStatus = "Exchanging code..."
-    OAuth.exchangeCode(tokens.client_id, tokens.client_secret, authCodeInput.trim(), function(ok, err) {
+    OAuth.exchangeCode(root.settings.client_id, root.settings.client_secret, authCodeInput.trim(), function(ok, result) {
       authenticating = false
       if (ok) {
-        tokens = OAuth.loadTokens()
+        _updateSettings({
+          access_token: result.access_token,
+          refresh_token: result.refresh_token,
+          expires_at: result.expires_at
+        })
         authStatus = "Authenticated!"
         authCodeInput = ""
         refresh()
       } else {
-        authStatus = err || "Authentication failed"
+        authStatus = result || "Authentication failed"
       }
     })
   }
 
   function saveCredentials() {
-    var t = tokens || {}
-    t.client_id = clientIdInput.text
-    t.client_secret = clientSecretInput.text
-    tokens = t
-    OAuth._save(t)
+    _updateSettings({
+      client_id: clientIdField.text,
+      client_secret: clientSecretField.text
+    })
     authStatus = "Credentials saved"
   }
 
-  property string clientIdInput: tokens ? (tokens.client_id || "") : ""
-  property string clientSecretInput: tokens ? (tokens.client_secret || "") : ""
+  function _updateSettings(patch) {
+    var entry = { id: root.moduleName }
+    for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
+    for (var p in patch) entry[p] = patch[p]
+    root.settings = entry
+    if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
+    if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+      root.bar.shell.updateEntryInline(root.moduleName, entry)
+  }
 
   // ---- Timer ----
 
@@ -779,7 +785,7 @@ Panel {
             }
 
             Text {
-              visible: root.calendars.length === 0 && OAuth.isConfigured(root.tokens)
+              visible: root.calendars.length === 0 && OAuth.isConfigured(root.settings)
               width: parent.width
               text: "Loading calendars..."
               color: Qt.darker(root.contentForeground, 1.5)
@@ -812,7 +818,7 @@ Panel {
               visible: root.authStatus !== ""
               width: parent.width
               text: root.authStatus
-              color: OAuth.isAuthenticated(root.tokens) ? "#4caf50" : Qt.darker(root.contentForeground, 1.5)
+              color: OAuth.isAuthenticated(root.settings) ? "#4caf50" : Qt.darker(root.contentForeground, 1.5)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.bodySmall
               wrapMode: Text.Wrap
@@ -840,12 +846,12 @@ Panel {
                   width: Style.space(12)
                   height: Style.space(12)
                   radius: Style.space(6)
-                  color: OAuth.isAuthenticated(root.tokens) ? "#4caf50" : "#f44336"
+                  color: OAuth.isAuthenticated(root.settings) ? "#4caf50" : "#f44336"
                   anchors.verticalCenter: parent.verticalCenter
                 }
 
                 Text {
-                  text: OAuth.isAuthenticated(root.tokens) ? "Authenticated" : "Not authenticated"
+                  text: OAuth.isAuthenticated(root.settings) ? "Authenticated" : "Not authenticated"
                   color: root.contentForeground
                   font.family: root.contentFontFamily
                   font.pixelSize: Style.font.body
@@ -884,8 +890,7 @@ Panel {
                   font.pixelSize: Style.font.body
                   clip: true
                   verticalAlignment: Text.AlignVCenter
-                  text: root.clientIdInput
-                  onTextChanged: root.clientIdInput = text
+                  text: root.settings ? (root.settings.client_id || "") : ""
                 }
               }
             }
@@ -921,8 +926,7 @@ Panel {
                   clip: true
                   verticalAlignment: Text.AlignVCenter
                   echoMode: TextInput.Password
-                  text: root.clientSecretInput
-                  onTextChanged: root.clientSecretInput = text
+                  text: root.settings ? (root.settings.client_secret || "") : ""
                 }
               }
             }
@@ -1072,7 +1076,7 @@ Panel {
               Text {
                 id: authBtnLabel
                 anchors.centerIn: parent
-                text: OAuth.isAuthenticated(root.tokens) ? "Re-authenticate" : "Authenticate with Google"
+                text: OAuth.isAuthenticated(root.settings) ? "Re-authenticate" : "Authenticate with Google"
                 color: "white"
                 font.family: root.contentFontFamily
                 font.pixelSize: Style.font.body
@@ -1090,7 +1094,7 @@ Panel {
 
             // Disconnect
             Rectangle {
-              visible: OAuth.isAuthenticated(root.tokens)
+              visible: OAuth.isAuthenticated(root.settings)
               width: discBtnLabel.implicitWidth + Style.space(30)
               height: Style.space(32)
               radius: Style.cornerRadius
@@ -1112,14 +1116,17 @@ Panel {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
-                  OAuth.clearTokens()
-                  root.tokens = OAuth.loadTokens()
+                  root._updateSettings({
+                    access_token: undefined,
+                    refresh_token: undefined,
+                    expires_at: undefined
+                  })
                   root.allEvents = []
                   root.todayEvents = []
                   root.weekEvents = []
                   root.eventGroups = []
                   root.calendars = []
-                  root.barText = ""
+                  root.barText = "󰃭"
                   root.authStatus = "Disconnected"
                 }
               }

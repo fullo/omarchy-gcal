@@ -11,15 +11,19 @@ BarWidget {
   moduleName: "io.github.fullo.gcal"
 
   property var allEvents: []
-  property string barText: ""
-  property string barTooltip: ""
-  property var tokens: OAuth.loadTokens()
+  property string barText: "󰃭"
+  property string barTooltip: "Google Calendar"
 
+  readonly property bool authenticated: OAuth.isAuthenticated(root.settings)
   readonly property var enabledCals: Model.settingsEnabledCals(setting("enabledCalendars", ""))
 
   function refresh() {
-    if (!OAuth.isConfigured(tokens)) return
-    Model.fetchAgenda(tokens, enabledCals, function(events) {
+    if (!OAuth.isConfigured(root.settings)) {
+      barText = "󰃭"
+      barTooltip = "Google Calendar — click to setup"
+      return
+    }
+    Model.fetchAgenda(root.settings, enabledCals, function(events) {
       root.allEvents = events
       root.barText = Model.formatBarLabel(events)
       root.barTooltip = Model.formatBarTooltip(events)
@@ -46,7 +50,7 @@ BarWidget {
   readonly property real openPanelIndicatorWidth: button.labelWidth
   readonly property real openPanelIndicatorHeight: Math.max(Style.space(10), Math.round(Style.bar.iconSlot * 0.55))
 
-  visible: barText !== ""
+  visible: true
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
@@ -85,7 +89,7 @@ BarWidget {
     bar: root.bar
     text: root.barText
     labelVisible: true
-    hasVisualContent: root.barText !== ""
+    hasVisualContent: true
     horizontalMargin: 8.75
     verticalPadding: 8.75
 
