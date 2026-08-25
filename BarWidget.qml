@@ -90,18 +90,13 @@ BarWidget {
     text: root.barText
     labelVisible: true
     hasVisualContent: true
+    tooltipText: root.barTooltip
     horizontalMargin: 8.75
     verticalPadding: 8.75
 
     onPressed: function(b) {
       if (b === Qt.RightButton) root.refresh()
       else root.togglePanel()
-    }
-
-    ToolTip {
-      visible: button.containsMouse && root.barTooltip !== ""
-      text: root.barTooltip
-      delay: 600
     }
   }
 }
