@@ -1038,7 +1038,6 @@ Panel {
                   clip: true
                   verticalAlignment: Text.AlignVCenter
                   placeholderText: "Paste URL or authorization code"
-                  placeholderTextColor: Qt.darker(root.contentForeground, 2.0)
                   text: root.authCodeInput
                   onTextChanged: root.authCodeInput = text
                 }
