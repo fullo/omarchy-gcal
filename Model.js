@@ -1,5 +1,4 @@
 var MS_PER_DAY = 86400000
-var CALENDAR_API = "https://www.googleapis.com/calendar/v3"
 
 // ---- iCal parsing ----
 
@@ -126,126 +125,8 @@ function unescapeIcal(val) {
     return val.replace(/\\n/g, "\n").replace(/\\,/g, ",").replace(/\\\\/g, "\\")
 }
 
-// ---- Google Calendar API (OAuth mode) ----
-
-function fetchGoogleAgenda(token, enabledCals, callback) {
-    if (!token) { callback([]); return }
-    var now = new Date()
-    var end = new Date(now.getTime() + 30 * MS_PER_DAY)
-    var url = CALENDAR_API + "/calendars/primary/events"
-        + "?timeMin=" + now.toISOString()
-        + "&timeMax=" + end.toISOString()
-        + "&singleEvents=true"
-        + "&orderBy=startTime"
-        + "&maxResults=50"
-    _apiGet(token, url, function(data) {
-        if (!data || !data.items) { callback([]); return }
-        var events = data.items.map(function(ev) { return _parseGoogleEvent(ev) })
-        if (enabledCals && enabledCals.length > 0) {
-            events = events.filter(function(e) {
-                return enabledCals.indexOf(e.calendar) >= 0
-            })
-        }
-        callback(events)
-    })
-}
-
-function fetchGoogleCalendars(token, callback) {
-    if (!token) { callback([]); return }
-    _apiGet(token, CALENDAR_API + "/users/me/calendarList", function(data) {
-        if (!data || !data.items) { callback([]); return }
-        callback(data.items.map(function(cal) {
-            return { id: cal.id, name: cal.summary, access: cal.accessRole, color: cal.backgroundColor || "#4285f4" }
-        }))
-    })
-}
-
-function createGoogleEvent(token, event, callback) {
-    if (!token || !callback) { if (callback) callback(false); return }
-    var body = {
-        summary: event.title || "",
-        location: event.location || "",
-        description: event.description || ""
-    }
-    if (event.allDay) {
-        body.start = { date: event.date }
-        body.end = { date: event.date }
-    } else {
-        body.start = { dateTime: event.startParsed ? event.startParsed.toISOString() : "" }
-        body.end = { dateTime: event.endParsed ? event.endParsed.toISOString() : "" }
-    }
-    var xhr = new XMLHttpRequest()
-    xhr.open("POST", CALENDAR_API + "/calendars/primary/events")
-    xhr.setRequestHeader("Authorization", "Bearer " + token)
-    xhr.setRequestHeader("Content-Type", "application/json")
-    xhr.onreadystatechange = function() {
-        if (xhr.readyState === 4) callback(xhr.status === 200 || xhr.status === 201)
-    }
-    xhr.send(JSON.stringify(body))
-}
-
-function _apiGet(token, url, callback) {
-    var xhr = new XMLHttpRequest()
-    xhr.open("GET", url)
-    xhr.setRequestHeader("Authorization", "Bearer " + token)
-    xhr.onreadystatechange = function() {
-        if (xhr.readyState === 4) {
-            if (xhr.status === 200) callback(JSON.parse(xhr.responseText))
-            else callback(null)
-        }
-    }
-    xhr.send()
-}
-
-function _parseGoogleEvent(ev) {
-    var start, end, dateStr, startTime = "", endTime = ""
-    if (ev.start.date) {
-        dateStr = ev.start.date
-    } else {
-        var sd = new Date(ev.start.dateTime)
-        var ed = new Date(ev.end.dateTime)
-        dateStr = _dateKeyFromDate(sd)
-        startTime = _formatTime(sd)
-        endTime = _formatTime(ed)
-    }
-    return {
-        date: dateStr,
-        startTime: startTime,
-        endTime: endTime,
-        startParsed: ev.start.dateTime ? new Date(ev.start.dateTime) : new Date(dateStr),
-        link: ev.htmlLink || "",
-        title: ev.summary || "",
-        location: ev.location || "",
-        description: ev.description || "",
-        calendar: ev.organizer ? (ev.organizer.email || "") : "",
-        allDay: !!ev.start.date
-    }
-}
-
-function _formatTime(d) {
-    var h = d.getHours(), m = d.getMinutes()
-    var ampm = h >= 12 ? "PM" : "AM"
-    var h12 = h % 12 || 12
-    return h12 + ":" + pad2(m) + " " + ampm
-}
-
 function convertTime(timeStr, format) {
     if (!timeStr || timeStr.trim() === "") return ""
-    // Already has AM/PM (from Google Calendar) — keep as-is for 12h, convert back for 24h
-    if (timeStr.indexOf("AM") >= 0 || timeStr.indexOf("PM") >= 0) {
-        if (format === "24h") {
-            var clean = timeStr.replace(" AM", "").replace(" PM", "")
-            var parts = clean.split(":")
-            if (parts.length < 2) return timeStr
-            var h = parseInt(parts[0], 10)
-            var m = parts[1]
-            if (timeStr.indexOf("PM") >= 0 && h !== 12) h += 12
-            if (timeStr.indexOf("AM") >= 0 && h === 12) h = 0
-            return pad2(h) + ":" + m
-        }
-        return timeStr
-    }
-    // Raw 24h format (from iCal)
     if (format === "12h") {
         var parts = timeStr.split(":")
         if (parts.length < 2) return timeStr

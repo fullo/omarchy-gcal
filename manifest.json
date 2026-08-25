@@ -4,7 +4,7 @@
   "name": "Google Calendar",
   "version": "1.0.0",
   "author": "fullo",
-  "description": "Google Calendar events in the bar and panel (OAuth, no dependencies)",
+  "description": "iCal feed events in the bar and panel (no dependencies)",
   "kinds": [
     "bar-widget"
   ],

@@ -1,8 +1,8 @@
-# io.github.fullo.gcal — Google Calendar for Omarchy
+# io.github.fullo.gcal — iCal Calendar for Omarchy
 
-A bar widget plugin for [Omarchy](https://omarchy.org/) that displays upcoming Google Calendar events directly in the status bar, with a full-featured panel for browsing your schedule.
+A bar widget plugin for [Omarchy](https://omarchy.org/) that displays upcoming iCal feed events directly in the status bar, with a full-featured panel for browsing your schedule.
 
-Uses the Google Calendar API with OAuth 2.0 — no external dependencies required.
+Uses standard iCal/ICS feeds — no external dependencies, no API keys required.
 
 ## Features
 
@@ -10,8 +10,8 @@ Uses the Google Calendar API with OAuth 2.0 — no external dependencies require
 - **Today tab** — all events for the current day with times, locations, and links
 - **Week tab** — events grouped by day for the current week
 - **Month tab** — full calendar grid with event dot indicators and week numbers
-- **Calendars tab** — select which Google calendars to display
-- **Setup tab** — in-panel OAuth configuration
+- **Calendars tab** — select which iCal feeds to display
+- **Setup tab** — add/remove iCal feed URLs, toggle 24h/12h time format
 - **Auto-refresh** — updates every 5 minutes
 - **Keyboard navigation** — 1-5 to switch tabs, `t` for today, `[/]` to step months
 
@@ -33,16 +33,11 @@ git clone https://github.com/fullo/omarchy-gcal.git ~/.config/omarchy/plugins/io
 
 ## Setup
 
-1. Go to [console.cloud.google.com](https://console.cloud.google.com)
-2. Create a project (or use an existing one)
-3. Enable the **Google Calendar API**
-4. Create **OAuth 2.0 credentials** (Desktop application)
-5. Set the redirect URI to: `http://localhost:1`
-6. Open the plugin panel (click the calendar icon in the bar)
-7. Go to the **Setup** tab
-8. Enter your Client ID and Client Secret, click **Save Credentials**
-9. Click **Authenticate with Google** and authorize the app
-10. After authorization, you'll be redirected to `localhost` which won't load — copy the full URL from the address bar and paste it into the code field
+1. Open the plugin panel (click the calendar icon in the bar)
+2. Go to the **Setup** tab
+3. Paste your iCal/ICS feed URL(s) — supports multiple feeds
+4. Click **Add**
+5. Use the **Calendars** tab to toggle which feeds are visible
 
 ## Removal
 
@@ -62,7 +57,9 @@ The plugin is configured through the Omarchy shell bar layout in `~/.config/omar
 
 ### Settings
 
+- **icalUrl** — JSON array of iCal feed URLs
 - **enabledCalendars** — JSON array of calendar IDs to show (empty = all calendars)
+- **timeFormat** — "24h" (default) or "12h" for AM/PM display
 
 ## License
 

@@ -4,7 +4,6 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
-import "OAuth.js" as OAuth
 
 BarWidget {
   id: root
@@ -12,9 +11,8 @@ BarWidget {
 
   property var allEvents: []
   property string barText: "󰃭"
-  property string barTooltip: "Google Calendar"
+  property string barTooltip: "iCal Calendar"
 
-  readonly property bool authenticated: OAuth.isAuthenticated(root.settings)
   readonly property string icalUrlRaw: setting("icalUrl", "")
   readonly property var icalUrls: {
     if (!icalUrlRaw || icalUrlRaw === "") return []
@@ -25,7 +23,7 @@ BarWidget {
       return icalUrlRaw ? [icalUrlRaw] : []
     }
   }
-  readonly property bool useIcal: !authenticated && icalUrls.length > 0
+  readonly property bool useIcal: icalUrls.length > 0
   readonly property var enabledCals: Model.settingsEnabledCals(setting("enabledCalendars", ""))
   readonly property bool showNextEvent: setting("showNextEvent", true) !== false
   readonly property bool iconOnly: setting("iconOnly", false) === true
@@ -33,19 +31,7 @@ BarWidget {
   readonly property string tooltipMode: setting("tooltipMode", "upcoming") || "upcoming"
 
   function refresh() {
-    if (authenticated) {
-      OAuth.getValidToken(root.settings, function(ok, token) {
-        if (!ok) {
-          barText = "󰃭"
-          barTooltip = "Calendar — OAuth expired"
-          return
-        }
-        Model.fetchGoogleAgenda(token, enabledCals, function(events) {
-          root.allEvents = events
-          _updateBar(events)
-        })
-      })
-    } else if (useIcal) {
+    if (useIcal) {
       var urls = root.icalUrls
       var merged = []
       var pending = urls.length
@@ -69,7 +55,7 @@ BarWidget {
       }
     } else {
       barText = "󰃭"
-      barTooltip = "Google Calendar — click to setup"
+      barTooltip = "iCal — click to setup"
     }
   }
 
