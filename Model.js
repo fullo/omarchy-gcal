@@ -1,5 +1,3 @@
-.pragma Library
-
 var MS_PER_DAY = 86400000
 var CALENDAR_API = "https://www.googleapis.com/calendar/v3"
 var WEEKDAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]

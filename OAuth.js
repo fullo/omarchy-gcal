@@ -1,5 +1,3 @@
-.pragma Library
-
 var AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
 var TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 var REDIRECT_URI = "http://localhost:1"
