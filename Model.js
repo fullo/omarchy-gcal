@@ -60,7 +60,7 @@ function _parseEvent(ev) {
     } else {
         var sd = new Date(ev.start.dateTime)
         var ed = new Date(ev.end.dateTime)
-        dateStr = _dateKeyFromDate(sd)
+        dateStr = dateKeyFromDate(sd)
         startTime = _formatTime(sd)
         endTime = _formatTime(ed)
     }
@@ -86,7 +86,7 @@ function _formatTime(d) {
     return h12 + ":" + (m < 10 ? "0" : "") + m + " " + ampm
 }
 
-function _dateKeyFromDate(date) {
+function dateKeyFromDate(date) {
     return date.getFullYear() + "-" + pad2(date.getMonth() + 1) + "-" + pad2(date.getDate())
 }
 
