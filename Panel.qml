@@ -31,6 +31,24 @@ Panel {
   readonly property string tooltipMode: setting("tooltipMode", "upcoming") || "upcoming"
   readonly property string timeFormat: setting("timeFormat", "24h") || "24h"
 
+  // Calendars list for Calendars tab — always shows all feeds regardless of refresh state
+  readonly property var allCalendarsList: {
+    if (useOAuth) return root.calendars
+    var icalColors = ["#2196f3", "#e91e63", "#4caf50", "#ff9800", "#9c27b0", "#00bcd4"]
+    var list = []
+    var urls = root.icalUrls
+    for (var i = 0; i < urls.length; i++) {
+      var feedName = urls[i].match(/\/ical\/([^/]+)\//)
+      var name = feedName ? decodeURIComponent(feedName[1]) : "iCal Feed " + (i + 1)
+      // Try to get extracted name from root.calendars
+      for (var j = 0; j < root.calendars.length; j++) {
+        if (root.calendars[j].id === "ical-" + i) { name = root.calendars[j].name; break }
+      }
+      list.push({ id: "ical-" + i, name: name, access: "read-only", color: icalColors[i % icalColors.length] })
+    }
+    return list
+  }
+
   // Auth state
   property bool authenticating: false
   property string authCodeInput: ""
@@ -1009,7 +1027,7 @@ Panel {
             }
 
             Repeater {
-              model: root.calendars
+              model: root.allCalendarsList
 
               Rectangle {
                 required property var modelData
@@ -1140,7 +1158,7 @@ Panel {
             }
 
             Text {
-              visible: root.calendars.length === 0
+              visible: root.allCalendarsList.length === 0
               width: parent.width
               text: root.useIcal ? "iCal feed configured" : "Loading calendars..."
               color: Qt.darker(root.contentForeground, 1.5)
