@@ -270,6 +270,11 @@ function formatEventTime(event) {
     return (s && e) ? s + " – " + e : s
 }
 
+function formatEventTimeStart(event) {
+    if (isAllDayEvent(event)) return "All day"
+    return event.startTime || ""
+}
+
 // ---- Today / this week ----
 
 function eventsForToday(events) {

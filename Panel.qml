@@ -461,7 +461,7 @@ Panel {
               Rectangle {
                 required property var modelData
                 width: parent.width
-                height: evRow.implicitHeight + Style.space(12)
+                height: evRow.implicitHeight + Style.space(10)
                 radius: Style.cornerRadius
                 color: evMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
                 opacity: Model.isEventPast(modelData) ? 0.4 : 1.0
@@ -489,7 +489,7 @@ Panel {
                     text: Model.isAllDayEvent(modelData) ? "All day" : Model.formatEventTime(modelData)
                     color: evMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
                     font.family: root.contentFontFamily
-                    font.pixelSize: Style.font.body
+                    font.pixelSize: Style.font.caption
                     elide: Text.ElideRight
                   }
 
@@ -558,13 +558,13 @@ Panel {
                   Rectangle {
                     required property var modelData
                     width: parent.parent.width
-                    height: wEvRow.implicitHeight + Style.space(10)
+                    height: wevRow.implicitHeight + Style.space(10)
                     radius: Style.cornerRadius
-                    color: wEvMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
+                    color: wevMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
                     opacity: Model.isEventPast(modelData) ? 0.4 : 1.0
 
                     Row {
-                      id: wEvRow
+                      id: wevRow
                       anchors.left: parent.left
                       anchors.leftMargin: Style.space(10)
                       anchors.right: parent.right
@@ -583,10 +583,10 @@ Panel {
                       Text {
                         width: Style.space(90)
                         anchors.verticalCenter: parent.verticalCenter
-                        text: Model.isAllDayEvent(modelData) ? "All day" : (modelData.startTime || "")
-                        color: wEvMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
+                        text: Model.isAllDayEvent(modelData) ? "All day" : Model.formatEventTime(modelData)
+                        color: wevMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
                         font.family: root.contentFontFamily
-                        font.pixelSize: Style.font.body
+                        font.pixelSize: Style.font.caption
                         elide: Text.ElideRight
                       }
 
@@ -594,7 +594,7 @@ Panel {
                         width: parent.width - Style.space(90) - Style.space(6) - Style.space(8) * 2
                         anchors.verticalCenter: parent.verticalCenter
                         text: modelData.title || "(No title)"
-                        color: wEvMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
+                        color: wevMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
                         font.family: root.contentFontFamily
                         font.pixelSize: Style.font.body
                         font.bold: true
@@ -603,7 +603,7 @@ Panel {
                     }
 
                     MouseArea {
-                      id: wEvMouse
+                      id: wevMouse
                       anchors.fill: parent
                       hoverEnabled: true
                       cursorShape: modelData.link !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
@@ -850,7 +850,7 @@ Panel {
                     Rectangle {
                       required property var modelData
                       width: parent.parent.parent.parent.width
-                      height: mevRow.implicitHeight + Style.space(8)
+                      height: mevRow.implicitHeight + Style.space(10)
                       radius: Style.cornerRadius
                       color: mevMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
                       opacity: Model.isEventPast(modelData) ? 0.4 : 1.0
@@ -875,10 +875,10 @@ Panel {
                         Text {
                           width: Style.space(90)
                           anchors.verticalCenter: parent.verticalCenter
-                          text: Model.isAllDayEvent(modelData) ? "All day" : (modelData.startTime || "")
+                          text: Model.isAllDayEvent(modelData) ? "All day" : Model.formatEventTime(modelData)
                           color: mevMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
                           font.family: root.contentFontFamily
-                          font.pixelSize: Style.font.body
+                          font.pixelSize: Style.font.caption
                           elide: Text.ElideRight
                         }
 
