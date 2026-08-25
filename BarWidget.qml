@@ -46,13 +46,16 @@ BarWidget {
   }
 
   function _updateBar(events) {
-    if (iconOnly || !showNextEvent) {
-      barText = "󰃭"
-    } else {
+    if (showNextEvent && !iconOnly) {
       barText = Model.formatBarLabel(events)
+    } else {
+      barText = "󰃭"
     }
     barTooltip = Model.formatBarTooltip(events)
   }
+
+  onShowNextEventChanged: Qt.callLater(function() { _updateBar(root.allEvents) })
+  onIconOnlyChanged: Qt.callLater(function() { _updateBar(root.allEvents) })
 
   function injectPanel() {
     var target = panelLoader.item
