@@ -603,16 +603,17 @@ Panel {
                       }
 
                       Text {
-                        width: Style.space(52)
+                        width: parent.width - Style.space(52) - Style.space(6) - Style.space(8) * 2
                         anchors.verticalCenter: parent.verticalCenter
                         text: Model.isAllDayEvent(modelData) ? "All day" : (modelData.startTime || "")
                         color: wEvMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
                         font.family: root.contentFontFamily
                         font.pixelSize: Style.font.body
+                        elide: Text.ElideRight
                       }
 
                       Text {
-                        width: parent.width - Style.space(52) - Style.space(10)
+                        width: parent.width - Style.space(52) - Style.space(6) - Style.space(8) * 3
                         anchors.verticalCenter: parent.verticalCenter
                         text: modelData.title || "(No title)"
                         color: wEvMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
@@ -893,16 +894,17 @@ Panel {
                         }
 
                         Text {
-                          width: Style.space(52)
+                          width: parent.width - Style.space(52) - Style.space(6) - Style.space(8) * 2
                           anchors.verticalCenter: parent.verticalCenter
                           text: Model.isAllDayEvent(modelData) ? "All day" : (modelData.startTime || "")
                           color: mevMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
                           font.family: root.contentFontFamily
                           font.pixelSize: Style.font.body
+                          elide: Text.ElideRight
                         }
 
                         Text {
-                          width: parent.parent.parent.parent.width - Style.space(52) - Style.space(10)
+                          width: parent.width - Style.space(52) - Style.space(6) - Style.space(8) * 3
                           anchors.verticalCenter: parent.verticalCenter
                           text: modelData.title || "(No title)"
                           color: mevMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
