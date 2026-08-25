@@ -17,10 +17,11 @@ BarWidget {
   readonly property bool authenticated: OAuth.isAuthenticated(root.settings)
   readonly property bool useIcal: !authenticated && setting("icalUrl", "") !== ""
   readonly property var enabledCals: Model.settingsEnabledCals(setting("enabledCalendars", ""))
+  readonly property bool showNextEvent: setting("showNextEvent", true) !== false
+  readonly property bool iconOnly: setting("iconOnly", false) === true
 
   function refresh() {
     if (authenticated) {
-      // OAuth mode
       OAuth.getValidToken(root.settings, function(ok, token) {
         if (!ok) {
           barText = "󰃭"
@@ -29,21 +30,28 @@ BarWidget {
         }
         Model.fetchGoogleAgenda(token, enabledCals, function(events) {
           root.allEvents = events
-          root.barText = Model.formatBarLabel(events)
-          root.barTooltip = Model.formatBarTooltip(events)
+          _updateBar(events)
         })
       })
     } else if (useIcal) {
-      // iCal mode
-      Model.fetchIcal(setting("icalUrl", ""), function(events) {
+      var url = setting("icalUrl", "")
+      Model.fetchIcal(url, function(events) {
         root.allEvents = events
-        root.barText = Model.formatBarLabel(events)
-        root.barTooltip = Model.formatBarTooltip(events)
+        _updateBar(events)
       })
     } else {
       barText = "󰃭"
       barTooltip = "Google Calendar — click to setup"
     }
+  }
+
+  function _updateBar(events) {
+    if (iconOnly || !showNextEvent) {
+      barText = "󰃭"
+    } else {
+      barText = Model.formatBarLabel(events)
+    }
+    barTooltip = Model.formatBarTooltip(events)
   }
 
   function injectPanel() {

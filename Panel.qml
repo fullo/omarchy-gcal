@@ -24,6 +24,10 @@ Panel {
   property var calendars: []
   property string fetchError: ""
 
+  // Settings
+  readonly property bool showNextEvent: setting("showNextEvent", true) !== false
+  readonly property bool iconOnly: setting("iconOnly", false) === true
+
   // Auth state
   property bool authenticating: false
   property string authCodeInput: ""
@@ -96,7 +100,7 @@ Panel {
       // Google Calendar API via OAuth
       OAuth.getValidToken(root.settings, function(ok, token) {
         if (!ok) {
-          fetchError = "OAuth expired — reconnect in Setup"
+          root.fetchError = "OAuth expired — reconnect in Setup"
           return
         }
         fetchError = ""
@@ -115,15 +119,18 @@ Panel {
       // iCal feed (read-only)
       var url = setting("icalUrl", "")
       Model.fetchIcal(url, function(events) {
-        fetchError = ""
+        root.fetchError = ""
         root.allEvents = events
         root.todayEvents = Model.eventsForToday(events)
         root.weekEvents = Model.eventsForThisWeek(events)
         root.eventGroups = Model.groupEventsByDay(root.weekEvents)
         if (events.length === 0) root.fetchError = "No upcoming events"
       })
+      // Show the iCal feed as a single calendar
+      var feedName = url.match(/\/ical\/([^/]+)\//)
+      root.calendars = [{ id: "ical-feed", name: feedName ? decodeURIComponent(feedName[1]) : "iCal Feed", access: "read-only" }]
     } else {
-      fetchError = "Add an iCal URL or connect Google Calendar in Setup"
+      root.fetchError = "Add an iCal URL or connect Google Calendar in Setup"
     }
   }
 
@@ -345,7 +352,7 @@ Panel {
             spacing: Style.space(6)
 
             Text {
-              text: Qt.formatDate(new Date(), "EEEE, MMMM d").toUpperCase()
+              text: Qt.formatDate(new Date(), "ddd d MMMM").toUpperCase()
               color: Qt.darker(root.contentForeground, 1.4)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.caption
@@ -362,6 +369,7 @@ Panel {
                 height: evRow.implicitHeight + Style.space(12)
                 radius: Style.cornerRadius
                 color: evMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
+                opacity: Model.isEventPast(modelData) ? 0.4 : 1.0
 
                 Row {
                   id: evRow
@@ -370,7 +378,15 @@ Panel {
                   anchors.right: parent.right
                   anchors.rightMargin: Style.space(10)
                   anchors.verticalCenter: parent.verticalCenter
-                  spacing: Style.space(10)
+                  spacing: Style.space(8)
+
+                  Rectangle {
+                    width: Style.space(6)
+                    height: Style.space(6)
+                    radius: Style.space(3)
+                    color: Model.eventCalendarColor(modelData)
+                    anchors.verticalCenter: parent.verticalCenter
+                  }
 
                   Column {
                     width: Style.space(68)
@@ -479,6 +495,7 @@ Panel {
                     height: wEvRow.implicitHeight + Style.space(10)
                     radius: Style.cornerRadius
                     color: wEvMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
+                    opacity: Model.isEventPast(modelData) ? 0.4 : 1.0
 
                     Row {
                       id: wEvRow
@@ -487,7 +504,15 @@ Panel {
                       anchors.right: parent.right
                       anchors.rightMargin: Style.space(10)
                       anchors.verticalCenter: parent.verticalCenter
-                      spacing: Style.space(10)
+                      spacing: Style.space(8)
+
+                      Rectangle {
+                        width: Style.space(6)
+                        height: Style.space(6)
+                        radius: Style.space(3)
+                        color: Model.eventCalendarColor(modelData)
+                        anchors.verticalCenter: parent.verticalCenter
+                      }
 
                       Text {
                         width: Style.space(52)
@@ -790,7 +815,7 @@ Panel {
             Text {
               visible: root.calendars.length === 0
               width: parent.width
-              text: "Loading calendars..."
+              text: root.useIcal ? "iCal feed configured" : "Loading calendars..."
               color: Qt.darker(root.contentForeground, 1.5)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.bodySmall
@@ -839,6 +864,145 @@ Panel {
                   font.family: root.contentFontFamily
                   font.pixelSize: Style.font.body
                   anchors.verticalCenter: parent.verticalCenter
+                }
+              }
+            }
+
+            // ---- Bar display options ----
+            Column {
+              width: parent.width
+              spacing: Style.space(6)
+
+              Text {
+                text: "BAR DISPLAY"
+                color: Qt.darker(root.contentForeground, 1.4)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption
+                font.letterSpacing: 1
+                font.bold: true
+              }
+
+              // Show next event toggle
+              Rectangle {
+                width: parent.width
+                height: toggleRow1.implicitHeight + Style.space(10)
+                radius: Style.cornerRadius
+                color: toggleMouse1.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
+
+                Row {
+                  id: toggleRow1
+                  anchors.left: parent.left
+                  anchors.leftMargin: Style.space(10)
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(10)
+                  anchors.verticalCenter: parent.verticalCenter
+                  spacing: Style.space(10)
+
+                  Rectangle {
+                    width: Style.space(16)
+                    height: Style.space(16)
+                    radius: Style.space(3)
+                    border.width: 1
+                    border.color: Qt.darker(root.contentForeground, 1.4)
+                    color: root.showNextEvent ? Color.accent : "transparent"
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                      anchors.centerIn: parent
+                      visible: root.showNextEvent
+                      text: "✓"
+                      color: "white"
+                      font.family: root.contentFontFamily
+                      font.pixelSize: Style.font.caption
+                      font.bold: true
+                    }
+                  }
+
+                  Text {
+                    text: "Show next event in bar"
+                    color: root.contentForeground
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.body
+                    anchors.verticalCenter: parent.verticalCenter
+                  }
+                }
+
+                MouseArea {
+                  id: toggleMouse1
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: {
+                    var entry = { id: root.moduleName }
+                    for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
+                    entry.showNextEvent = !root.showNextEvent
+                    root.settings = entry
+                    if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
+                    if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+                      root.bar.shell.updateEntryInline(root.moduleName, entry)
+                  }
+                }
+              }
+
+              // Icon only toggle
+              Rectangle {
+                width: parent.width
+                height: toggleRow2.implicitHeight + Style.space(10)
+                radius: Style.cornerRadius
+                color: toggleMouse2.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
+
+                Row {
+                  id: toggleRow2
+                  anchors.left: parent.left
+                  anchors.leftMargin: Style.space(10)
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(10)
+                  anchors.verticalCenter: parent.verticalCenter
+                  spacing: Style.space(10)
+
+                  Rectangle {
+                    width: Style.space(16)
+                    height: Style.space(16)
+                    radius: Style.space(3)
+                    border.width: 1
+                    border.color: Qt.darker(root.contentForeground, 1.4)
+                    color: root.iconOnly ? Color.accent : "transparent"
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                      anchors.centerIn: parent
+                      visible: root.iconOnly
+                      text: "✓"
+                      color: "white"
+                      font.family: root.contentFontFamily
+                      font.pixelSize: Style.font.caption
+                      font.bold: true
+                    }
+                  }
+
+                  Text {
+                    text: "Show only calendar icon (no event text)"
+                    color: root.contentForeground
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.body
+                    anchors.verticalCenter: parent.verticalCenter
+                  }
+                }
+
+                MouseArea {
+                  id: toggleMouse2
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: {
+                    var entry = { id: root.moduleName }
+                    for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
+                    entry.iconOnly = !root.iconOnly
+                    root.settings = entry
+                    if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
+                    if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+                      root.bar.shell.updateEntryInline(root.moduleName, entry)
+                  }
                 }
               }
             }

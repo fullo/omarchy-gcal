@@ -7,12 +7,15 @@ function fetchIcal(url, callback) {
     if (!url || url === "") { callback([]); return }
     var xhr = new XMLHttpRequest()
     xhr.open("GET", url)
+    xhr.timeout = 30000
     xhr.onreadystatechange = function() {
         if (xhr.readyState === 4) {
             if (xhr.status === 200) callback(parseIcal(xhr.responseText))
             else callback([])
         }
     }
+    xhr.onerror = function() { callback([]) }
+    xhr.ontimeout = function() { callback([]) }
     xhr.send()
 }
 
@@ -58,6 +61,9 @@ function parseIcal(raw) {
             calendar: "",
             allDay: allDay
         }
+    }).sort(function(a, b) {
+        if (!a.startParsed || !b.startParsed) return 0
+        return a.startParsed.getTime() - b.startParsed.getTime()
     })
 }
 
@@ -76,8 +82,8 @@ function parseIcalDatetime(val, fullKey) {
     // Format: 20260825T143000Z or 20260825 (all-day)
     var clean = val.replace(/Z$/, "").replace(/T/g, " ").replace(/:/g, " ").replace(/\s+/g, " ").trim()
     var parts = clean.split(" ")
-    var isAllDay = parts.length === 3 && fullKey && fullKey.indexOf("VALUE=DATE") >= 0
-    if (parts.length < 3) {
+    var isAllDay = fullKey && fullKey.indexOf("VALUE=DATE") >= 0
+    if (parts.length < 2) {
         // Try all-day: 20260825
         if (val.length === 8) {
             var y = parseInt(val.substring(0, 4))
@@ -87,12 +93,28 @@ function parseIcalDatetime(val, fullKey) {
         }
         return null
     }
-    var y = parseInt(parts[0].substring(0, 4))
-    var m = parseInt(parts[0].substring(4, 6)) - 1
-    var d = parseInt(parts[0].substring(6, 8))
-    var h = parseInt(parts[1].substring(0, 2))
-    var min = parseInt(parts[1].substring(2, 4))
-    var sec = parseInt(parts[1].substring(4, 6)) || 0
+    // Date part: 20260827
+    var dateStr = parts[0]
+    if (dateStr.length !== 8) return null
+    var y = parseInt(dateStr.substring(0, 4))
+    var m = parseInt(dateStr.substring(4, 6)) - 1
+    var d = parseInt(dateStr.substring(6, 8))
+    // Time part: 070000 or 07 00 00
+    if (parts.length === 2) {
+        // "20260827 070000" — time as single token
+        var timeToken = parts[1]
+        var h = parseInt(timeToken.substring(0, 2))
+        var min = parseInt(timeToken.substring(2, 4))
+        var sec = parseInt(timeToken.substring(4, 6)) || 0
+        var ampm = h >= 12 ? "PM" : "AM"
+        var h12 = h % 12 || 12
+        var timeStr = h12 + ":" + pad2(min) + " " + ampm
+        return { date: dateKey(y, m, d), time: timeStr, parsed: new Date(y, m, d, h, min, sec) }
+    }
+    // "20260827 07 00 00" or "20260827 07 00" — time split into tokens
+    var h = parseInt(parts[1])
+    var min = parseInt(parts[2])
+    var sec = parseInt(parts[3]) || 0
     var ampm = h >= 12 ? "PM" : "AM"
     var h12 = h % 12 || 12
     var timeStr = h12 + ":" + pad2(min) + " " + ampm
@@ -216,6 +238,11 @@ function isAllDayEvent(event) {
     return event.allDay || !event.startTime || event.startTime.trim() === ""
 }
 
+function isEventPast(event) {
+    if (!event.startParsed) return false
+    return event.startParsed.getTime() < Date.now()
+}
+
 function minutesUntil(event) {
     if (!event.startParsed) return null
     return Math.round((event.startParsed.getTime() - Date.now()) / 60000)
@@ -322,6 +349,11 @@ function weekdayLabel(weekday) {
 }
 
 // ---- Grouping & display ----
+
+function eventCalendarColor(event) {
+    // For iCal: blue. For OAuth: would need calendar colors from API
+    return "#4fa8de"
+}
 
 function groupEventsByDay(events) {
     var groups = {}, order = []
