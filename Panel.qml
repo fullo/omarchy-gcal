@@ -38,6 +38,7 @@ Panel {
 
   // iCal state
   property string icalInput: ""
+  property var clearedUrls: []
   property bool icalConnecting: false
 
   // Mode: "ical" (default) or "oauth"
@@ -1036,6 +1037,20 @@ Panel {
 
                 property bool isEnabled: Model.calendarIsEnabled(modelData.id, root.enabledCals)
 
+                MouseArea {
+                  id: calMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: {
+                    var cals = root.enabledCals ? root.enabledCals.slice() : []
+                    var idx = cals.indexOf(modelData.id)
+                    if (idx >= 0) cals.splice(idx, 1)
+                    else cals.push(modelData.id)
+                    persistCalendars(cals)
+                  }
+                }
+
                 Row {
                   anchors.left: parent.left
                   anchors.leftMargin: Style.space(8)
@@ -1136,20 +1151,6 @@ Panel {
                         }
                       }
                     }
-                  }
-                }
-
-                MouseArea {
-                  id: calMouse
-                  anchors.fill: parent
-                  hoverEnabled: true
-                  cursorShape: Qt.PointingHandCursor
-                  onClicked: {
-                    var cals = root.enabledCals ? root.enabledCals.slice() : []
-                    var idx = cals.indexOf(modelData.id)
-                    if (idx >= 0) cals.splice(idx, 1)
-                    else cals.push(modelData.id)
-                    persistCalendars(cals)
                   }
                 }
               }
@@ -1606,6 +1607,7 @@ Panel {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
+                      root.clearedUrls = root.icalUrls.slice()
                       root.icalInput = ""
                       var entry = { id: root.moduleName }
                       for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
@@ -1615,7 +1617,7 @@ Panel {
                       if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
                         root.bar.shell.updateEntryInline(root.moduleName, entry)
                       root.calendars = []
-                      root.authStatus = "All iCal feeds cleared"
+                      root.authStatus = "All iCal feeds cleared — Undo"
                       Qt.callLater(root.refresh)
                     }
                   }
@@ -1875,8 +1877,47 @@ Panel {
                 }
               }
             }
-          }
-        }
+                }
+
+                Rectangle {
+                  visible: root.clearedUrls.length > 0
+                  width: icalUndoLabel.implicitWidth + Style.space(30)
+                  height: Style.space(32)
+                  radius: Style.cornerRadius
+                  color: undoMouse.containsMouse ? Color.accent : "transparent"
+                  border.width: 1
+                  border.color: Color.accent
+
+                  Text {
+                    id: icalUndoLabel
+                    anchors.centerIn: parent
+                    text: "Undo"
+                    color: undoMouse.containsMouse ? "white" : Color.accent
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.body
+                    font.bold: true
+                  }
+
+                  MouseArea {
+                    id: undoMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      var entry = { id: root.moduleName }
+                      for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
+                      entry.icalUrl = JSON.stringify(root.clearedUrls)
+                      root.settings = entry
+                      if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
+                      if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+                        root.bar.shell.updateEntryInline(root.moduleName, entry)
+                      root.clearedUrls = []
+                      root.authStatus = "iCal feeds restored"
+                      Qt.callLater(root.refresh)
+                    }
+                  }
+                }
+              }
       }
     }
   }
