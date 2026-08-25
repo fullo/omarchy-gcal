@@ -111,18 +111,14 @@ function parseIcalDatetime(val, fullKey) {
         var h = parseInt(timeToken.substring(0, 2))
         var min = parseInt(timeToken.substring(2, 4))
         var sec = parseInt(timeToken.substring(4, 6)) || 0
-        var ampm = h >= 12 ? "PM" : "AM"
-        var h12 = h % 12 || 12
-        var timeStr = h12 + ":" + pad2(min) + " " + ampm
+        var timeStr = pad2(h) + ":" + pad2(min)
         return { date: dateKey(y, m, d), time: timeStr, parsed: new Date(y, m, d, h, min, sec) }
     }
     // "20260827 07 00 00" or "20260827 07 00" — time split into tokens
     var h = parseInt(parts[1])
     var min = parseInt(parts[2])
     var sec = parseInt(parts[3]) || 0
-    var ampm = h >= 12 ? "PM" : "AM"
-    var h12 = h % 12 || 12
-    var timeStr = h12 + ":" + pad2(min) + " " + ampm
+    var timeStr = pad2(h) + ":" + pad2(min)
     return { date: dateKey(y, m, d), time: timeStr, parsed: new Date(y, m, d, h, min, sec) }
 }
 
@@ -235,6 +231,21 @@ function _formatTime(d) {
 
 function convertTime(timeStr, format) {
     if (!timeStr || timeStr.trim() === "") return ""
+    // Already has AM/PM (from Google Calendar) — keep as-is for 12h, convert back for 24h
+    if (timeStr.indexOf("AM") >= 0 || timeStr.indexOf("PM") >= 0) {
+        if (format === "24h") {
+            var clean = timeStr.replace(" AM", "").replace(" PM", "")
+            var parts = clean.split(":")
+            if (parts.length < 2) return timeStr
+            var h = parseInt(parts[0], 10)
+            var m = parts[1]
+            if (timeStr.indexOf("PM") >= 0 && h !== 12) h += 12
+            if (timeStr.indexOf("AM") >= 0 && h === 12) h = 0
+            return pad2(h) + ":" + m
+        }
+        return timeStr
+    }
+    // Raw 24h format (from iCal)
     if (format === "12h") {
         var parts = timeStr.split(":")
         if (parts.length < 2) return timeStr
