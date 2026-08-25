@@ -1037,7 +1037,6 @@ Panel {
                   font.pixelSize: Style.font.body
                   clip: true
                   verticalAlignment: Text.AlignVCenter
-                  placeholderText: "Paste URL or authorization code"
                   text: root.authCodeInput
                   onTextChanged: root.authCodeInput = text
                 }

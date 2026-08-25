@@ -14,7 +14,7 @@ BarWidget {
   property string barText: "󰃭"
   property string barTooltip: "Google Calendar"
 
-  readonly property bool authenticated: root.settings && OAuth.isAuthenticated(root.settings)
+  readonly property bool authenticated: OAuth.isAuthenticated(root.settings)
   readonly property var enabledCals: Model.settingsEnabledCals(setting("enabledCalendars", ""))
 
   function refresh() {

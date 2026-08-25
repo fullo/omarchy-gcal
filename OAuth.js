@@ -84,5 +84,5 @@ function isConfigured(s) {
 }
 
 function isAuthenticated(s) {
-    return isConfigured(s) && s.access_token && s.refresh_token
+    return !!(isConfigured(s) && s.access_token && s.refresh_token)
 }
