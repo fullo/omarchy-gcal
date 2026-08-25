@@ -3,9 +3,20 @@ var TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 var REDIRECT_URI = "http://localhost:1"
 var SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
 
-function authUrl(clientId) {
+var DEFAULT_CLIENT_ID = "YOUR_CLIENT_ID.apps.googleusercontent.com"
+var DEFAULT_CLIENT_SECRET = "YOUR_CLIENT_SECRET"
+
+function getClientId(settings) {
+    return (settings && settings.client_id) ? settings.client_id : DEFAULT_CLIENT_ID
+}
+
+function getClientSecret(settings) {
+    return (settings && settings.client_secret) ? settings.client_secret : DEFAULT_CLIENT_SECRET
+}
+
+function authUrl(settings) {
     return AUTH_ENDPOINT
-        + "?client_id=" + encodeURIComponent(clientId)
+        + "?client_id=" + encodeURIComponent(getClientId(settings))
         + "&redirect_uri=" + encodeURIComponent(REDIRECT_URI)
         + "&response_type=code"
         + "&scope=" + encodeURIComponent(SCOPE)
@@ -13,7 +24,9 @@ function authUrl(clientId) {
         + "&prompt=consent"
 }
 
-function exchangeCode(clientId, clientSecret, code, callback) {
+function exchangeCode(settings, code, callback) {
+    var clientId = getClientId(settings)
+    var clientSecret = getClientSecret(settings)
     var xhr = new XMLHttpRequest()
     xhr.open("POST", TOKEN_ENDPOINT)
     xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded")
@@ -42,8 +55,10 @@ function exchangeCode(clientId, clientSecret, code, callback) {
     )
 }
 
-function refreshAccessToken(clientId, clientSecret, refreshToken, callback) {
-    if (!refreshToken) { callback(false, null); return }
+function refreshAccessToken(settings, callback) {
+    if (!settings || !settings.refresh_token) { callback(false, null); return }
+    var clientId = getClientId(settings)
+    var clientSecret = getClientSecret(settings)
     var xhr = new XMLHttpRequest()
     xhr.open("POST", TOKEN_ENDPOINT)
     xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded")
@@ -63,7 +78,7 @@ function refreshAccessToken(clientId, clientSecret, refreshToken, callback) {
     xhr.send(
         "client_id=" + encodeURIComponent(clientId)
         + "&client_secret=" + encodeURIComponent(clientSecret)
-        + "&refresh_token=" + encodeURIComponent(refreshToken)
+        + "&refresh_token=" + encodeURIComponent(settings.refresh_token)
         + "&grant_type=refresh_token"
     )
 }
@@ -72,17 +87,15 @@ function getValidToken(settings, callback) {
     if (!settings || !settings.access_token) { callback(false, null); return }
     if (Date.now() < (settings.expires_at || 0) - 60000) {
         callback(true, settings.access_token)
-    } else if (settings.refresh_token) {
-        refreshAccessToken(settings.client_id, settings.client_secret, settings.refresh_token, callback)
     } else {
-        callback(false, null)
+        refreshAccessToken(settings, callback)
     }
 }
 
 function isConfigured(s) {
-    return s && s.client_id && s.client_secret
+    return true
 }
 
 function isAuthenticated(s) {
-    return !!(isConfigured(s) && s.access_token && s.refresh_token)
+    return !!(s && s.access_token && s.refresh_token)
 }

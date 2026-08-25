@@ -18,15 +18,10 @@ BarWidget {
   readonly property var enabledCals: Model.settingsEnabledCals(setting("enabledCalendars", ""))
 
   function refresh() {
-    if (!OAuth.isConfigured(root.settings)) {
-      barText = "󰃭"
-      barTooltip = "Google Calendar — click to setup"
-      return
-    }
     OAuth.getValidToken(root.settings, function(ok, token) {
       if (!ok) {
         barText = "󰃭"
-        barTooltip = "Google Calendar — auth expired"
+        barTooltip = "Google Calendar — click to connect"
         return
       }
       Model.fetchAgenda(token, enabledCals, function(events) {

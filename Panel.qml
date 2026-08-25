@@ -83,16 +83,12 @@ Panel {
   }
 
   function refresh() {
-    if (!OAuth.isConfigured(root.settings)) {
-      fetchError = "Configure OAuth credentials first"
-      return
-    }
-    fetchError = ""
     OAuth.getValidToken(root.settings, function(ok, token) {
       if (!ok) {
-        fetchError = "Authentication expired — re-authenticate in Setup tab"
+        fetchError = "Connect to Google Calendar in the Setup tab"
         return
       }
+      fetchError = ""
       Model.fetchAgenda(token, enabledCals, function(events) {
         root.allEvents = events
         root.todayEvents = Model.eventsForToday(events)
@@ -127,23 +123,19 @@ Panel {
   // ---- OAuth ----
 
   function startAuth() {
-    if (!root.settings || !root.settings.client_id || !root.settings.client_secret) {
-      authStatus = "Enter client ID and secret first"
-      return
-    }
     authenticating = true
     authStatus = "Opening browser..."
     authCodeInput = ""
-    Qt.openUrlExternally(OAuth.authUrl(root.settings.client_id))
+    Qt.openUrlExternally(OAuth.authUrl(root.settings))
   }
 
   function submitAuthCode() {
     if (authCodeInput.trim() === "") {
-      authStatus = "Paste the authorization code"
+      authStatus = "Paste the URL from the browser"
       return
     }
-    authStatus = "Exchanging code..."
-    OAuth.exchangeCode(root.settings.client_id, root.settings.client_secret, authCodeInput.trim(), function(ok, result) {
+    authStatus = "Connecting..."
+    OAuth.exchangeCode(root.settings, authCodeInput.trim(), function(ok, result) {
       authenticating = false
       if (ok) {
         _updateSettings({
@@ -151,21 +143,13 @@ Panel {
           refresh_token: result.refresh_token,
           expires_at: result.expires_at
         })
-        authStatus = "Authenticated!"
+        authStatus = "Connected!"
         authCodeInput = ""
         refresh()
       } else {
-        authStatus = result || "Authentication failed"
+        authStatus = result || "Connection failed"
       }
     })
-  }
-
-  function saveCredentials() {
-    _updateSettings({
-      client_id: clientIdField.text,
-      client_secret: clientSecretField.text
-    })
-    authStatus = "Credentials saved"
   }
 
   function _updateSettings(patch) {
@@ -186,18 +170,6 @@ Panel {
     repeat: true
     triggeredOnStart: true
     onTriggered: root.refresh()
-  }
-
-  // ---- IPC ----
-
-  IpcHandler {
-    target: root.ipcTarget
-    function open(): void { root.open() }
-    function close(): void { root.close() }
-    function show(): void { root.open() }
-    function hide(): void { root.close() }
-    function toggle(): void { root.toggle() }
-    function refresh(): void { root.refresh() }
   }
 
   // ---- Panel UI ----
@@ -791,7 +763,7 @@ Panel {
             }
 
             Text {
-              visible: root.calendars.length === 0 && OAuth.isConfigured(root.settings)
+              visible: root.calendars.length === 0
               width: parent.width
               text: "Loading calendars..."
               color: Qt.darker(root.contentForeground, 1.5)
@@ -810,37 +782,17 @@ Panel {
             width: parent.width
             spacing: Style.space(10)
 
-            Text {
-              text: "GOOGLE CALENDAR SETUP"
-              color: Qt.darker(root.contentForeground, 1.4)
-              font.family: root.contentFontFamily
-              font.pixelSize: Style.font.caption
-              font.letterSpacing: 1
-              font.bold: true
-            }
-
-            // Status
-            Text {
-              visible: root.authStatus !== ""
-              width: parent.width
-              text: root.authStatus
-              color: OAuth.isAuthenticated(root.settings) ? "#4caf50" : Qt.darker(root.contentForeground, 1.5)
-              font.family: root.contentFontFamily
-              font.pixelSize: Style.font.bodySmall
-              wrapMode: Text.Wrap
-            }
-
-            // Auth status indicator
+            // Status indicator
             Rectangle {
               width: parent.width
-              height: authStatusRow.implicitHeight + Style.space(12)
+              height: statusRow.implicitHeight + Style.space(12)
               radius: Style.cornerRadius
               border.width: 1
               border.color: Qt.darker(root.contentForeground, 1.4)
               color: "transparent"
 
               Row {
-                id: authStatusRow
+                id: statusRow
                 anchors.left: parent.left
                 anchors.leftMargin: Style.space(10)
                 anchors.right: parent.right
@@ -857,7 +809,7 @@ Panel {
                 }
 
                 Text {
-                  text: OAuth.isAuthenticated(root.settings) ? "Authenticated" : "Not authenticated"
+                  text: OAuth.isAuthenticated(root.settings) ? "Connected to Google Calendar" : "Not connected"
                   color: root.contentForeground
                   font.family: root.contentFontFamily
                   font.pixelSize: Style.font.body
@@ -866,154 +818,53 @@ Panel {
               }
             }
 
-            // Client ID
-            Column {
+            // Status message
+            Text {
+              visible: root.authStatus !== ""
               width: parent.width
-              spacing: Style.space(4)
-
-              Text {
-                text: "Client ID"
-                color: Qt.darker(root.contentForeground, 1.4)
-                font.family: root.contentFontFamily
-                font.pixelSize: Style.font.caption
-                font.letterSpacing: 1
-              }
-
-              Rectangle {
-                width: parent.width
-                height: Style.space(32)
-                radius: Style.cornerRadius
-                border.width: 1
-                border.color: Qt.darker(root.contentForeground, 1.4)
-                color: "transparent"
-
-                TextInput {
-                  id: clientIdField
-                  anchors.fill: parent
-                  anchors.margins: Style.space(8)
-                  color: root.contentForeground
-                  font.family: root.contentFontFamily
-                  font.pixelSize: Style.font.body
-                  clip: true
-                  verticalAlignment: Text.AlignVCenter
-                  text: root.settings ? (root.settings.client_id || "") : ""
-                }
-              }
+              text: root.authStatus
+              color: OAuth.isAuthenticated(root.settings) ? "#4caf50" : Qt.darker(root.contentForeground, 1.5)
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.Wrap
             }
 
-            // Client Secret
-            Column {
-              width: parent.width
-              spacing: Style.space(4)
-
-              Text {
-                text: "Client Secret"
-                color: Qt.darker(root.contentForeground, 1.4)
-                font.family: root.contentFontFamily
-                font.pixelSize: Style.font.caption
-                font.letterSpacing: 1
-              }
-
-              Rectangle {
-                width: parent.width
-                height: Style.space(32)
-                radius: Style.cornerRadius
-                border.width: 1
-                border.color: Qt.darker(root.contentForeground, 1.4)
-                color: "transparent"
-
-                TextInput {
-                  id: clientSecretField
-                  anchors.fill: parent
-                  anchors.margins: Style.space(8)
-                  color: root.contentForeground
-                  font.family: root.contentFontFamily
-                  font.pixelSize: Style.font.body
-                  clip: true
-                  verticalAlignment: Text.AlignVCenter
-                  echoMode: TextInput.Password
-                  text: root.settings ? (root.settings.client_secret || "") : ""
-                }
-              }
-            }
-
-            // Save credentials button
+            // Connect button
             Rectangle {
-              width: saveBtnLabel.implicitWidth + Style.space(30)
-              height: Style.space(32)
+              visible: !OAuth.isAuthenticated(root.settings) && !root.authenticating && root.authCodeInput === ""
+              width: connectLabel.implicitWidth + Style.space(30)
+              height: Style.space(36)
               radius: Style.cornerRadius
-              color: saveBtnMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
-              border.width: 1
-              border.color: Qt.darker(root.contentForeground, 1.4)
+              color: connectMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : Color.accent
 
               Text {
-                id: saveBtnLabel
+                id: connectLabel
                 anchors.centerIn: parent
-                text: "Save Credentials"
-                color: root.contentForeground
+                text: "Connect to Google"
+                color: "white"
                 font.family: root.contentFontFamily
                 font.pixelSize: Style.font.body
-              }
-
-              MouseArea {
-                id: saveBtnMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.saveCredentials()
-              }
-            }
-
-            // Hairline
-            Rectangle {
-              width: parent.width
-              height: Style.spacing.hairline
-              color: root.contentForeground
-              opacity: 0.12
-            }
-
-            // Instructions
-            Column {
-              width: parent.width
-              spacing: Style.space(4)
-
-              Text {
-                text: "SETUP INSTRUCTIONS"
-                color: Qt.darker(root.contentForeground, 1.4)
-                font.family: root.contentFontFamily
-                font.pixelSize: Style.font.caption
-                font.letterSpacing: 1
                 font.bold: true
               }
 
-              Text {
-                width: parent.width
-                text: "1. Go to console.cloud.google.com\n2. Create a project (or use existing)\n3. Enable Google Calendar API\n4. Create OAuth 2.0 credentials (Desktop app)\n5. Set redirect URI to: http://localhost:1\n6. Copy Client ID and Secret above\n7. Save, then click Authenticate"
-                color: Qt.darker(root.contentForeground, 1.5)
-                font.family: root.contentFontFamily
-                font.pixelSize: Style.font.bodySmall
-                wrapMode: Text.Wrap
-                lineHeight: 1.4
+              MouseArea {
+                id: connectMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.startAuth()
               }
             }
 
-            // Auth code input
+            // Auth code input (shown after browser opens)
             Column {
               visible: root.authenticating || root.authCodeInput !== ""
               width: parent.width
-              spacing: Style.space(4)
-
-              Text {
-                text: "AUTHORIZATION CODE"
-                color: Qt.darker(root.contentForeground, 1.4)
-                font.family: root.contentFontFamily
-                font.pixelSize: Style.font.caption
-                font.letterSpacing: 1
-              }
+              spacing: Style.space(6)
 
               Text {
                 width: parent.width
-                text: "After the browser opens, authorize the app. You'll be redirected to localhost which won't load — copy the full URL from the address bar and paste it below."
+                text: "Paste the URL from the browser after authorizing:"
                 color: Qt.darker(root.contentForeground, 1.5)
                 font.family: root.contentFontFamily
                 font.pixelSize: Style.font.bodySmall
@@ -1042,24 +893,23 @@ Panel {
                 }
               }
 
-              // Submit button
               Rectangle {
-                width: submitBtnLabel.implicitWidth + Style.space(30)
+                width: submitLabel.implicitWidth + Style.space(30)
                 height: Style.space(32)
                 radius: Style.cornerRadius
-                color: submitBtnMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : Color.accent
+                color: submitMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : Color.accent
 
                 Text {
-                  id: submitBtnLabel
+                  id: submitLabel
                   anchors.centerIn: parent
-                  text: root.authenticating ? "Authenticating..." : "Submit Code"
+                  text: root.authenticating ? "Connecting..." : "Connect"
                   color: "white"
                   font.family: root.contentFontFamily
                   font.pixelSize: Style.font.body
                 }
 
                 MouseArea {
-                  id: submitBtnMouse
+                  id: submitMouse
                   anchors.fill: parent
                   hoverEnabled: true
                   cursorShape: Qt.PointingHandCursor
@@ -1069,37 +919,10 @@ Panel {
               }
             }
 
-            // Authenticate button
-            Rectangle {
-              visible: !root.authenticating && root.authCodeInput === ""
-              width: authBtnLabel.implicitWidth + Style.space(30)
-              height: Style.space(36)
-              radius: Style.cornerRadius
-              color: authBtnMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : Color.accent
-
-              Text {
-                id: authBtnLabel
-                anchors.centerIn: parent
-                text: OAuth.isAuthenticated(root.settings) ? "Re-authenticate" : "Authenticate with Google"
-                color: "white"
-                font.family: root.contentFontFamily
-                font.pixelSize: Style.font.body
-                font.bold: true
-              }
-
-              MouseArea {
-                id: authBtnMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.startAuth()
-              }
-            }
-
-            // Disconnect
+            // Disconnect (when authenticated)
             Rectangle {
               visible: OAuth.isAuthenticated(root.settings)
-              width: discBtnLabel.implicitWidth + Style.space(30)
+              width: discLabel.implicitWidth + Style.space(30)
               height: Style.space(32)
               radius: Style.cornerRadius
               color: "transparent"
@@ -1107,7 +930,7 @@ Panel {
               border.color: Qt.darker(root.contentForeground, 1.4)
 
               Text {
-                id: discBtnLabel
+                id: discLabel
                 anchors.centerIn: parent
                 text: "Disconnect"
                 color: Qt.darker(root.contentForeground, 1.5)
