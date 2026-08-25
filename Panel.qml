@@ -29,6 +29,7 @@ Panel {
   readonly property bool iconOnly: setting("iconOnly", false) === true
   readonly property bool showDate: setting("showDate", false) === true
   readonly property string tooltipMode: setting("tooltipMode", "upcoming") || "upcoming"
+  readonly property string timeFormat: setting("timeFormat", "24h") || "24h"
 
   // Auth state
   property bool authenticating: false
@@ -484,9 +485,9 @@ Panel {
                   }
 
                   Text {
-                    width: Style.space(90)
+                    width: Style.space(120)
                     anchors.verticalCenter: parent.verticalCenter
-                    text: Model.isAllDayEvent(modelData) ? "All day" : Model.formatEventTime(modelData)
+                    text: Model.isAllDayEvent(modelData) ? "All day" : Model.formatEventTime(modelData, root.timeFormat)
                     color: evMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
                     font.family: root.contentFontFamily
                     font.pixelSize: Style.font.caption
@@ -494,7 +495,7 @@ Panel {
                   }
 
                   Text {
-                    width: parent.width - Style.space(90) - Style.space(6) - Style.space(8) * 2
+                    width: parent.width - Style.space(120) - Style.space(6) - Style.space(8) * 2
                     anchors.verticalCenter: parent.verticalCenter
                     text: modelData.title || "(No title)"
                     color: evMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
@@ -581,9 +582,9 @@ Panel {
                       }
 
                       Text {
-                        width: Style.space(90)
+                        width: Style.space(120)
                         anchors.verticalCenter: parent.verticalCenter
-                        text: Model.isAllDayEvent(modelData) ? "All day" : Model.formatEventTime(modelData)
+                        text: Model.isAllDayEvent(modelData) ? "All day" : Model.formatEventTime(modelData, root.timeFormat)
                         color: wevMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
                         font.family: root.contentFontFamily
                         font.pixelSize: Style.font.caption
@@ -591,7 +592,7 @@ Panel {
                       }
 
                       Text {
-                        width: parent.width - Style.space(90) - Style.space(6) - Style.space(8) * 2
+                        width: parent.width - Style.space(120) - Style.space(6) - Style.space(8) * 2
                         anchors.verticalCenter: parent.verticalCenter
                         text: modelData.title || "(No title)"
                         color: wevMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
@@ -873,9 +874,9 @@ Panel {
                         }
 
                         Text {
-                          width: Style.space(90)
+                          width: Style.space(120)
                           anchors.verticalCenter: parent.verticalCenter
-                          text: Model.isAllDayEvent(modelData) ? "All day" : Model.formatEventTime(modelData)
+                          text: Model.isAllDayEvent(modelData) ? "All day" : Model.formatEventTime(modelData, root.timeFormat)
                           color: mevMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
                           font.family: root.contentFontFamily
                           font.pixelSize: Style.font.caption
@@ -883,7 +884,7 @@ Panel {
                         }
 
                         Text {
-                          width: parent.width - Style.space(90) - Style.space(6) - Style.space(8) * 2
+                          width: parent.width - Style.space(120) - Style.space(6) - Style.space(8) * 2
                           anchors.verticalCenter: parent.verticalCenter
                           text: modelData.title || "(No title)"
                           color: mevMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
@@ -1469,6 +1470,87 @@ Panel {
                         var entry = { id: root.moduleName }
                         for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
                         entry.tooltipMode = modelData.key
+                        root.settings = entry
+                        if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
+                        if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+                          root.bar.shell.updateEntryInline(root.moduleName, entry)
+                      }
+                    }
+                  }
+                }
+              }
+
+              // Time format selector
+              Column {
+                width: parent.width
+                spacing: Style.space(4)
+
+                Text {
+                  text: "TIME FORMAT"
+                  color: Qt.darker(root.contentForeground, 1.4)
+                  font.family: root.contentFontFamily
+                  font.pixelSize: Style.font.caption
+                  font.letterSpacing: 1
+                  font.bold: true
+                }
+
+                Repeater {
+                  model: [
+                    { key: "24h", label: "24-hour (14:30)" },
+                    { key: "12h", label: "12-hour AM/PM (2:30 PM)" }
+                  ]
+
+                  Rectangle {
+                    required property var modelData
+                    width: parent.width
+                    height: Style.space(32)
+                    radius: Style.cornerRadius
+                    color: fmtMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
+
+                    Row {
+                      anchors.left: parent.left
+                      anchors.leftMargin: Style.space(10)
+                      anchors.verticalCenter: parent.verticalCenter
+                      spacing: Style.space(10)
+
+                      Rectangle {
+                        width: Style.space(14)
+                        height: Style.space(14)
+                        radius: Style.space(7)
+                        border.width: 1
+                        border.color: Qt.darker(root.contentForeground, 1.4)
+                        color: root.timeFormat === modelData.key ? Color.accent : "transparent"
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        Rectangle {
+                          visible: root.timeFormat === modelData.key
+                          anchors.centerIn: parent
+                          width: Style.space(6)
+                          height: Style.space(6)
+                          radius: Style.space(3)
+                          color: "white"
+                        }
+                      }
+
+                      Text {
+                        text: modelData.label
+                        color: root.contentForeground
+                        font.family: root.contentFontFamily
+                        font.pixelSize: Style.font.body
+                        anchors.verticalCenter: parent.verticalCenter
+                      }
+                    }
+
+                    MouseArea {
+                      id: fmtMouse
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      preventStealing: true
+                      cursorShape: Qt.PointingHandCursor
+                      onClicked: {
+                        var entry = { id: root.moduleName }
+                        for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
+                        entry.timeFormat = modelData.key
                         root.settings = entry
                         if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
                         if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")

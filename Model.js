@@ -233,6 +233,20 @@ function _formatTime(d) {
     return h12 + ":" + pad2(m) + " " + ampm
 }
 
+function convertTime(timeStr, format) {
+    if (!timeStr || timeStr.trim() === "") return ""
+    if (format === "12h") {
+        var parts = timeStr.split(":")
+        if (parts.length < 2) return timeStr
+        var h = parseInt(parts[0], 10)
+        var m = parts[1]
+        var ampm = h >= 12 ? "PM" : "AM"
+        var h12 = h % 12 || 12
+        return h12 + ":" + m + " " + ampm
+    }
+    return timeStr
+}
+
 function _dateKeyFromDate(date) {
     return dateKey(date.getFullYear(), date.getMonth(), date.getDate())
 }
@@ -264,15 +278,18 @@ function formatTimeUntil(minutes) {
     return days + "d"
 }
 
-function formatEventTime(event) {
+function formatEventTime(event, timeFormat) {
     if (isAllDayEvent(event)) return "All day"
-    var s = event.startTime || "", e = event.endTime || ""
+    var fmt = timeFormat || "24h"
+    var s = convertTime(event.startTime, fmt)
+    var e = convertTime(event.endTime, fmt)
     return (s && e) ? s + " – " + e : s
 }
 
-function formatEventTimeStart(event) {
+function formatEventTimeStart(event, timeFormat) {
     if (isAllDayEvent(event)) return "All day"
-    return event.startTime || ""
+    var fmt = timeFormat || "24h"
+    return convertTime(event.startTime, fmt)
 }
 
 // ---- Today / this week ----
