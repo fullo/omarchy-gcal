@@ -154,7 +154,7 @@ function fetchGoogleCalendars(token, callback) {
     _apiGet(token, CALENDAR_API + "/users/me/calendarList", function(data) {
         if (!data || !data.items) { callback([]); return }
         callback(data.items.map(function(cal) {
-            return { id: cal.id, name: cal.summary, access: cal.accessRole }
+            return { id: cal.id, name: cal.summary, access: cal.accessRole, color: cal.backgroundColor || "#4285f4" }
         }))
     })
 }
@@ -270,6 +270,13 @@ function formatEventTime(event) {
 function eventsForToday(events) {
     var today = dateKeyFromDate(new Date())
     return events.filter(function(e) { return e.date === today })
+}
+
+function firstEventForDay(events, dayKey) {
+    for (var i = 0; i < events.length; i++) {
+        if (events[i].date === dayKey) return events[i]
+    }
+    return null
 }
 
 function eventsForThisWeek(events) {

@@ -147,6 +147,7 @@ Panel {
     root.viewYear = next.year
     root.viewMonth = next.month
     root.monthEventsPage = 0
+    Qt.callLater(scrollToToday)
   }
 
   function goToToday() {
@@ -154,6 +155,29 @@ Panel {
     root.viewYear = now.getFullYear()
     root.viewMonth = now.getMonth()
     root.monthEventsPage = 0
+    Qt.callLater(scrollToToday)
+  }
+
+  function scrollToToday() {
+    var sw = typeof monthScroll !== "undefined" ? monthScroll : null
+    if (!sw) return
+    var now = new Date()
+    if (now.getMonth() !== root.viewMonth || now.getFullYear() !== root.viewYear) {
+      sw.contentY = 0
+      return
+    }
+    var today = Model.dateKeyFromDate(now)
+    var weekH = root.cellHeight + Style.space(2)
+    var rows = root.weeks
+    for (var i = 0; i < rows.length; i++) {
+      var days = rows[i].days
+      for (var j = 0; j < days.length; j++) {
+        if (days[j].key === today) {
+          sw.contentY = Math.max(0, i * weekH - (sw.height - weekH) / 2)
+          return
+        }
+      }
+    }
   }
 
   function monthEventsForView() {
@@ -624,6 +648,7 @@ Panel {
               anchors.horizontalCenter: parent.horizontalCenter
               spacing: Style.space(2)
 
+              // Weekday header (stays fixed at top)
               Row {
                 spacing: root.cellSpacing
                 Item { width: root.weekColumnWidth; height: Style.space(14) }
@@ -647,70 +672,89 @@ Panel {
                 }
               }
 
-              Repeater {
-                model: root.weeks
+              // Scrollable week rows
+              Flickable {
+                id: monthScroll
+                width: parent.width
+                height: root.cellHeight * 3 + Style.space(8)
+                contentWidth: width
+                contentHeight: weekColumn.implicitHeight
+                clip: true
+                flickableDirection: Flickable.VerticalFlick
+                boundsBehavior: Flickable.StopAtBounds
 
-                Row {
-                  required property var modelData
-                  spacing: root.cellSpacing
-
-                  Text {
-                    width: root.weekColumnWidth
-                    height: root.cellHeight
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                    text: modelData.week
-                    color: Qt.darker(root.contentForeground, 1.9)
-                    font.family: root.contentFontFamily
-                    font.pixelSize: Style.font.caption
-                  }
-
-                  Item { width: Style.space(8); height: root.cellHeight }
+                Column {
+                  id: weekColumn
+                  width: parent.width
+                  spacing: Style.space(2)
 
                   Repeater {
-                    model: modelData.days
+                    model: root.weeks
 
-                    Rectangle {
+                    Row {
                       required property var modelData
-                      width: root.cellWidth
-                      height: root.cellHeight
-                      radius: Style.cornerRadius
-                      color: dayMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
-                      border.width: modelData.today ? Style.spacing.hairline : 0
-                      border.color: Style.normalBorderFor(root.contentForeground, Color.accent)
-
-                      property int evCount: root.eventsOnDay(modelData.key)
+                      spacing: root.cellSpacing
 
                       Text {
-                        anchors.centerIn: parent
-                        text: modelData.day
-                        color: modelData.inMonth
-                          ? (modelData.weekend ? Qt.darker(root.contentForeground, 1.45) : root.contentForeground)
-                          : Qt.darker(root.contentForeground, 2.2)
+                        width: root.weekColumnWidth
+                        height: root.cellHeight
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        text: modelData.week
+                        color: Qt.darker(root.contentForeground, 1.9)
                         font.family: root.contentFontFamily
-                        font.pixelSize: Style.font.body
-                        font.bold: modelData.today
+                        font.pixelSize: Style.font.caption
                       }
 
-                      Rectangle {
-                        visible: evCount > 0 && modelData.inMonth
-                        anchors.bottom: parent.bottom
-                        anchors.bottomMargin: Style.space(2)
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        width: Math.min(Style.space(16), Style.space(4) + evCount * Style.space(3))
-                        height: Style.space(4)
-                        radius: Style.space(2)
-                        color: Color.accent
-                        opacity: 0.7
-                      }
+                      Item { width: Style.space(8); height: root.cellHeight }
 
-                      MouseArea {
-                        id: dayMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: evCount > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
-                        onClicked: {
-                          if (evCount > 0) root.setTab(0)
+                      Repeater {
+                        model: modelData.days
+
+                        Rectangle {
+                          required property var modelData
+                          width: root.cellWidth
+                          height: root.cellHeight
+                          radius: Style.cornerRadius
+                          color: dayMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
+                          border.width: modelData.today ? Style.spacing.hairline : 0
+                          border.color: Style.normalBorderFor(root.contentForeground, Color.accent)
+
+                          property int evCount: root.eventsOnDay(modelData.key)
+
+                          Text {
+                            anchors.centerIn: parent
+                            text: modelData.day
+                            color: modelData.inMonth
+                              ? (modelData.weekend ? Qt.darker(root.contentForeground, 1.45) : root.contentForeground)
+                              : Qt.darker(root.contentForeground, 2.2)
+                            font.family: root.contentFontFamily
+                            font.pixelSize: Style.font.body
+                            font.bold: modelData.today
+                          }
+
+                          Rectangle {
+                            visible: evCount > 0 && modelData.inMonth
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: Style.space(2)
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: Math.min(Style.space(16), Style.space(4) + evCount * Style.space(3))
+                            height: Style.space(4)
+                            radius: Style.space(2)
+                            color: Color.accent
+                            opacity: 0.7
+                          }
+
+                          MouseArea {
+                            id: dayMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            preventStealing: true
+                            cursorShape: evCount > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: {
+                              if (evCount > 0) root.setTab(0)
+                            }
+                          }
                         }
                       }
                     }
@@ -732,9 +776,26 @@ Panel {
               }
 
               property var monthEvents: root.monthEventsForView()
+              property var monthGroups: Model.groupEventsByDay(monthEvents)
               property int totalPages: Math.ceil(monthEvents.length / root.monthEventsPerPage)
               property int pageStart: root.monthEventsPage * root.monthEventsPerPage
               property var pageEvents: monthEvents.slice(pageStart, pageStart + root.monthEventsPerPage)
+
+              property var visibleGroups: {
+                var groups = []
+                var shown = 0
+                for (var i = 0; i < monthGroups.length; i++) {
+                  var g = monthGroups[i]
+                  var evs = []
+                  for (var j = 0; j < g.events.length; j++) {
+                    if (shown >= pageStart && shown < pageStart + root.monthEventsPerPage)
+                      evs.push(g.events[j])
+                    shown++
+                  }
+                  if (evs.length > 0) groups.push({ date: g.date, events: evs })
+                }
+                return groups
+              }
 
               Text {
                 text: parent.monthEvents.length + " EVENTS"
@@ -746,59 +807,78 @@ Panel {
               }
 
               Repeater {
-                model: parent.pageEvents
+                model: parent.visibleGroups
 
-                Rectangle {
+                Column {
                   required property var modelData
                   width: parent.parent.parent.width
-                  height: mevRow.implicitHeight + Style.space(8)
-                  radius: Style.cornerRadius
-                  color: mevMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
-                  opacity: Model.isEventPast(modelData) ? 0.4 : 1.0
+                  spacing: Style.space(4)
 
-                  Row {
-                    id: mevRow
-                    anchors.left: parent.left
-                    anchors.leftMargin: Style.space(10)
-                    anchors.right: parent.right
-                    anchors.rightMargin: Style.space(10)
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Style.space(8)
-
-                    Rectangle {
-                      width: Style.space(6)
-                      height: Style.space(6)
-                      radius: Style.space(3)
-                      color: Model.eventCalendarColor(modelData)
-                      anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    Text {
-                      width: Style.space(60)
-                      anchors.verticalCenter: parent.verticalCenter
-                      text: Model.isAllDayEvent(modelData) ? "All day" : (modelData.startTime || "")
-                      color: mevMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
-                      font.family: root.contentFontFamily
-                      font.pixelSize: Style.font.body
-                    }
-
-                    Text {
-                      width: parent.parent.parent.width - Style.space(60) - Style.space(8) - Style.space(8)
-                      anchors.verticalCenter: parent.verticalCenter
-                      text: modelData.title || "(No title)"
-                      color: mevMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
-                      font.family: root.contentFontFamily
-                      font.pixelSize: Style.font.body
-                      elide: Text.ElideRight
-                    }
+                  Text {
+                    text: Model.formatDayHeader(modelData.date).toUpperCase()
+                    color: Qt.darker(root.contentForeground, 1.4)
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.caption
+                    font.letterSpacing: 1
+                    font.bold: true
                   }
 
-                  MouseArea {
-                    id: mevMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: modelData.link !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
-                    onClicked: root.openEvent(modelData.link)
+                  Repeater {
+                    model: modelData.events
+
+                    Rectangle {
+                      required property var modelData
+                      width: parent.parent.parent.parent.width
+                      height: mevRow.implicitHeight + Style.space(8)
+                      radius: Style.cornerRadius
+                      color: mevMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
+                      opacity: Model.isEventPast(modelData) ? 0.4 : 1.0
+
+                      Row {
+                        id: mevRow
+                        anchors.left: parent.left
+                        anchors.leftMargin: Style.space(10)
+                        anchors.right: parent.right
+                        anchors.rightMargin: Style.space(10)
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: Style.space(8)
+
+                        Rectangle {
+                          width: Style.space(6)
+                          height: Style.space(6)
+                          radius: Style.space(3)
+                          color: Model.eventCalendarColor(modelData)
+                          anchors.verticalCenter: parent.verticalCenter
+                        }
+
+                        Text {
+                          width: Style.space(52)
+                          anchors.verticalCenter: parent.verticalCenter
+                          text: Model.isAllDayEvent(modelData) ? "All day" : (modelData.startTime || "")
+                          color: mevMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
+                          font.family: root.contentFontFamily
+                          font.pixelSize: Style.font.body
+                        }
+
+                        Text {
+                          width: parent.parent.parent.parent.width - Style.space(52) - Style.space(10)
+                          anchors.verticalCenter: parent.verticalCenter
+                          text: modelData.title || "(No title)"
+                          color: mevMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
+                          font.family: root.contentFontFamily
+                          font.pixelSize: Style.font.body
+                          elide: Text.ElideRight
+                        }
+                      }
+
+                      MouseArea {
+                        id: mevMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: modelData.link !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        onClicked: root.openEvent(modelData.link)
+                      }
+                    }
                   }
                 }
               }
