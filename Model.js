@@ -1,10 +1,111 @@
 var MS_PER_DAY = 86400000
 var CALENDAR_API = "https://www.googleapis.com/calendar/v3"
-var WEEKDAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
 
-// ---- Google Calendar API ----
+// ---- iCal parsing ----
 
-function fetchAgenda(token, enabledCals, callback) {
+function fetchIcal(url, callback) {
+    if (!url || url === "") { callback([]); return }
+    var xhr = new XMLHttpRequest()
+    xhr.open("GET", url)
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+            if (xhr.status === 200) callback(parseIcal(xhr.responseText))
+            else callback([])
+        }
+    }
+    xhr.send()
+}
+
+function parseIcal(raw) {
+    var lines = unfoldLines(String(raw || ""))
+    var events = []
+    var inEvent = false
+    var ev = {}
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].replace(/^\s+|\s+$/g, "")
+        if (line === "BEGIN:VEVENT") { inEvent = true; ev = {} }
+        else if (line === "END:VEVENT") { inEvent = false; events.push(ev) }
+        else if (inEvent) {
+            var colon = line.indexOf(":")
+            if (colon < 0) continue
+            var key = line.substring(0, colon)
+            var val = line.substring(colon + 1)
+            // Strip params from key (e.g. "DTSTART;VALUE=DATE" -> "DTSTART")
+            var semi = key.indexOf(";")
+            var bareKey = semi >= 0 ? key.substring(0, semi) : key
+            if (bareKey === "DTSTART") ev.dtstart = parseIcalDatetime(val, key)
+            else if (bareKey === "DTEND") ev.dtend = parseIcalDatetime(val, key)
+            else if (bareKey === "SUMMARY") ev.title = unescapeIcal(val)
+            else if (bareKey === "LOCATION") ev.location = unescapeIcal(val)
+            else if (bareKey === "DESCRIPTION") ev.description = unescapeIcal(val)
+            else if (bareKey === "URL") ev.link = val
+        }
+    }
+    return events.filter(function(e) { return e.dtstart }).map(function(e) {
+        var allDay = !e.dtstart.time
+        var dateStr = e.dtstart.date
+        var startTime = allDay ? "" : e.dtstart.time
+        var endTime = e.dtend ? (allDay ? "" : e.dtend.time) : ""
+        return {
+            date: dateStr,
+            startTime: startTime,
+            endTime: endTime,
+            startParsed: e.dtstart.parsed,
+            link: e.link || "",
+            title: e.title || "",
+            location: e.location || "",
+            description: e.description || "",
+            calendar: "",
+            allDay: allDay
+        }
+    })
+}
+
+function unfoldLines(raw) {
+    // iCal continuation lines start with space/tab
+    return raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+        .split("\n")
+        .reduce(function(acc, line) {
+            if (line.match(/^[ \t]/) && acc.length > 0) acc[acc.length - 1] += line.substring(1)
+            else acc.push(line)
+            return acc
+        }, [])
+}
+
+function parseIcalDatetime(val, fullKey) {
+    // Format: 20260825T143000Z or 20260825 (all-day)
+    var clean = val.replace(/Z$/, "").replace(/T/g, " ").replace(/:/g, " ").replace(/\s+/g, " ").trim()
+    var parts = clean.split(" ")
+    var isAllDay = parts.length === 3 && fullKey && fullKey.indexOf("VALUE=DATE") >= 0
+    if (parts.length < 3) {
+        // Try all-day: 20260825
+        if (val.length === 8) {
+            var y = parseInt(val.substring(0, 4))
+            var m = parseInt(val.substring(4, 6)) - 1
+            var d = parseInt(val.substring(6, 8))
+            return { date: dateKey(y, m, d), time: "", parsed: new Date(y, m, d) }
+        }
+        return null
+    }
+    var y = parseInt(parts[0].substring(0, 4))
+    var m = parseInt(parts[0].substring(4, 6)) - 1
+    var d = parseInt(parts[0].substring(6, 8))
+    var h = parseInt(parts[1].substring(0, 2))
+    var min = parseInt(parts[1].substring(2, 4))
+    var sec = parseInt(parts[1].substring(4, 6)) || 0
+    var ampm = h >= 12 ? "PM" : "AM"
+    var h12 = h % 12 || 12
+    var timeStr = h12 + ":" + pad2(min) + " " + ampm
+    return { date: dateKey(y, m, d), time: timeStr, parsed: new Date(y, m, d, h, min, sec) }
+}
+
+function unescapeIcal(val) {
+    return val.replace(/\\n/g, "\n").replace(/\\,/g, ",").replace(/\\\\/g, "\\")
+}
+
+// ---- Google Calendar API (OAuth mode) ----
+
+function fetchGoogleAgenda(token, enabledCals, callback) {
     if (!token) { callback([]); return }
     var now = new Date()
     var end = new Date(now.getTime() + 30 * MS_PER_DAY)
@@ -16,7 +117,7 @@ function fetchAgenda(token, enabledCals, callback) {
         + "&maxResults=50"
     _apiGet(token, url, function(data) {
         if (!data || !data.items) { callback([]); return }
-        var events = data.items.map(function(ev) { return _parseEvent(ev) })
+        var events = data.items.map(function(ev) { return _parseGoogleEvent(ev) })
         if (enabledCals && enabledCals.length > 0) {
             events = events.filter(function(e) {
                 return enabledCals.indexOf(e.calendar) >= 0
@@ -26,7 +127,7 @@ function fetchAgenda(token, enabledCals, callback) {
     })
 }
 
-function fetchCalendars(token, callback) {
+function fetchGoogleCalendars(token, callback) {
     if (!token) { callback([]); return }
     _apiGet(token, CALENDAR_API + "/users/me/calendarList", function(data) {
         if (!data || !data.items) { callback([]); return }
@@ -36,6 +137,30 @@ function fetchCalendars(token, callback) {
     })
 }
 
+function createGoogleEvent(token, event, callback) {
+    if (!token || !callback) { if (callback) callback(false); return }
+    var body = {
+        summary: event.title || "",
+        location: event.location || "",
+        description: event.description || ""
+    }
+    if (event.allDay) {
+        body.start = { date: event.date }
+        body.end = { date: event.date }
+    } else {
+        body.start = { dateTime: event.startParsed ? event.startParsed.toISOString() : "" }
+        body.end = { dateTime: event.endParsed ? event.endParsed.toISOString() : "" }
+    }
+    var xhr = new XMLHttpRequest()
+    xhr.open("POST", CALENDAR_API + "/calendars/primary/events")
+    xhr.setRequestHeader("Authorization", "Bearer " + token)
+    xhr.setRequestHeader("Content-Type", "application/json")
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) callback(xhr.status === 200 || xhr.status === 201)
+    }
+    xhr.send(JSON.stringify(body))
+}
+
 function _apiGet(token, url, callback) {
     var xhr = new XMLHttpRequest()
     xhr.open("GET", url)
@@ -43,33 +168,28 @@ function _apiGet(token, url, callback) {
     xhr.onreadystatechange = function() {
         if (xhr.readyState === 4) {
             if (xhr.status === 200) callback(JSON.parse(xhr.responseText))
-            else if (xhr.status === 401) callback(null) // token expired
             else callback(null)
         }
     }
     xhr.send()
 }
 
-function _parseEvent(ev) {
+function _parseGoogleEvent(ev) {
     var start, end, dateStr, startTime = "", endTime = ""
     if (ev.start.date) {
-        // All-day event
         dateStr = ev.start.date
-        startTime = ""
-        endTime = ""
     } else {
         var sd = new Date(ev.start.dateTime)
         var ed = new Date(ev.end.dateTime)
-        dateStr = dateKeyFromDate(sd)
+        dateStr = _dateKeyFromDate(sd)
         startTime = _formatTime(sd)
         endTime = _formatTime(ed)
     }
-    var parsed = _parseEventDatetime(dateStr, startTime)
     return {
         date: dateStr,
         startTime: startTime,
         endTime: endTime,
-        startParsed: parsed,
+        startParsed: ev.start.dateTime ? new Date(ev.start.dateTime) : new Date(dateStr),
         link: ev.htmlLink || "",
         title: ev.summary || "",
         location: ev.location || "",
@@ -83,29 +203,14 @@ function _formatTime(d) {
     var h = d.getHours(), m = d.getMinutes()
     var ampm = h >= 12 ? "PM" : "AM"
     var h12 = h % 12 || 12
-    return h12 + ":" + (m < 10 ? "0" : "") + m + " " + ampm
+    return h12 + ":" + pad2(m) + " " + ampm
 }
 
-function dateKeyFromDate(date) {
-    return date.getFullYear() + "-" + pad2(date.getMonth() + 1) + "-" + pad2(date.getDate())
+function _dateKeyFromDate(date) {
+    return dateKey(date.getFullYear(), date.getMonth(), date.getDate())
 }
 
-function _parseEventDatetime(dateStr, timeStr) {
-    if (!dateStr || !timeStr) return null
-    var cleanTime = timeStr.replace(/\s/g, "")
-    var match = cleanTime.match(/^(\d{1,2}):(\d{2})(AM|PM)?$/i)
-    if (!match) return null
-    var hours = parseInt(match[1], 10)
-    var minutes = parseInt(match[2], 10)
-    var ampm = match[3] ? match[3].toUpperCase() : null
-    if (ampm === "PM" && hours < 12) hours += 12
-    if (ampm === "AM" && hours === 12) hours = 0
-    var dateParts = dateStr.split("-")
-    if (dateParts.length !== 3) return null
-    return new Date(parseInt(dateParts[0], 10), parseInt(dateParts[1], 10) - 1, parseInt(dateParts[2], 10), hours, minutes)
-}
-
-// ---- Event helpers (kept from v1) ----
+// ---- Event helpers ----
 
 function isAllDayEvent(event) {
     return event.allDay || !event.startTime || event.startTime.trim() === ""
@@ -133,7 +238,7 @@ function formatEventTime(event) {
     return (s && e) ? s + " – " + e : s
 }
 
-// ---- Today / this week events ----
+// ---- Today / this week ----
 
 function eventsForToday(events) {
     var today = dateKeyFromDate(new Date())
@@ -154,6 +259,10 @@ function eventsForThisWeek(events) {
 
 function dateKey(year, month, day) {
     return year + "-" + pad2(Number(month) + 1) + "-" + pad2(day)
+}
+
+function dateKeyFromDate(date) {
+    return dateKey(date.getFullYear(), date.getMonth(), date.getDate())
 }
 
 function pad2(n) { return (n < 10 ? "0" : "") + n }
@@ -241,8 +350,6 @@ function formatDayHeader(dateStr) {
     return dn[date.getDay()] + ", " + mn[date.getMonth()] + " " + date.getDate()
 }
 
-// ---- Bar label ----
-
 function formatBarLabel(events) {
     if (!events || events.length === 0) return ""
     var now = new Date()
@@ -279,11 +386,11 @@ function settingsEnabledCals(settingValue) {
     try { var a = JSON.parse(settingValue); return Array.isArray(a) ? a : null } catch(e) { return null }
 }
 
-function calendarIsEnabled(calName, enabledCals) {
+function calendarIsEnabled(calId, enabledCals) {
     if (!enabledCals) return true
     if (enabledCals.length === 0) return true
     for (var i = 0; i < enabledCals.length; i++) {
-        if (enabledCals[i] === calName) return true
+        if (enabledCals[i] === calId) return true
     }
     return false
 }

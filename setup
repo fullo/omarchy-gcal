@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+# OAuth setup script for io.github.fullo.gcal plugin
+# Inspired by tmn73/omarchy-calendar
+#
+# Automates: GCP project creation, Calendar API enablement, OAuth client creation
+# Cannot automate: consent screen, scope declaration, app publishing
+#
+# Usage: omarchy plugin run io.github.fullo.gcal setup
+
+set -euo pipefail
+
+SCOPE="https://www.googleapis.com/auth/calendar"
+
+step() { printf '\n\033[1;36m==>\033[0m %s\n' "$1"; }
+info() { printf '   %s\n' "$1"; }
+warn() { printf '   \033[1;33m⚠ %s\033[0m\n' "$1"; }
+
+pause() {
+  if [ ! -t 0 ]; then
+    printf '\n   Not interactive, skipping pause.\n'
+    return 0
+  fi
+  printf '\n   Press Enter when done. '
+  read -r _ || true
+}
+
+# Check dependencies
+command -v gcloud >/dev/null 2>&1 || {
+  warn "gcloud CLI not found. Install it:"
+  info "  https://cloud.google.com/sdk/docs/install"
+  exit 1
+}
+
+# ---- Step 1: Sign in ----
+step "Signing in to Google Cloud"
+if gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | grep -q .; then
+  info "Already signed in as $(gcloud auth list --filter=status:ACTIVE --format='value(account)')"
+else
+  info "Opening browser for sign-in..."
+  gcloud auth login
+fi
+
+# ---- Step 2: Create or find project ----
+step "Finding or creating a Google Cloud project"
+
+# Check for existing omarchy-gcal project
+PROJECT_ID=$(gcloud projects list --filter="projectId ~ ^omarchy-gcal" --format='value(projectId)' --limit=1 2>/dev/null || true)
+
+if [ -n "$PROJECT_ID" ]; then
+  info "Reusing existing project: $PROJECT_ID"
+else
+  PROJECT_ID="omarchy-gcal-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
+  info "Creating project: $PROJECT_ID"
+  if ! gcloud projects create "$PROJECT_ID" --name="Omarchy Calendar" 2>/dev/null; then
+    warn "Project creation failed. You may be at Google's project quota."
+    info "Delete an unused project or create one manually at:"
+    info "  https://console.cloud.google.com/cloud-resource-manager"
+    exit 1
+  fi
+fi
+
+gcloud config set project "$PROJECT_ID" 2>/dev/null
+info "Using project: $PROJECT_ID"
+
+# ---- Step 3: Enable Calendar API ----
+step "Enabling Google Calendar API"
+if gcloud services list --enabled --filter="config.name:calendar-json.googleapis.com" --format='value(config.name)' 2>/dev/null | grep -q calendar; then
+  info "Calendar API already enabled"
+else
+  info "Enabling..."
+  gcloud services enable calendar-json.googleapis.com 2>/dev/null
+  info "Calendar API enabled"
+fi
+
+# ---- Step 4: Manual - Consent screen ----
+step "Manual step 1/4: Configure the OAuth consent screen"
+info "Open in your browser:"
+info ""
+info "  https://console.cloud.google.com/auth/overview?project=$PROJECT_ID"
+info ""
+info "Fill in:"
+info "  App name:          Omarchy Calendar"
+info "  User support:      your email"
+info "  Audience:          External"
+info "  Contact:           your email"
+info ""
+info "If you see 'OAuth Overview' with metrics, the consent screen is already set."
+pause
+
+# ---- Step 5: Manual - Declare scope ----
+step "Manual step 2/4: Declare the calendar scope"
+info "Open in your browser:"
+info ""
+info "  https://console.cloud.google.com/auth/scopes?project=$PROJECT_ID"
+info ""
+info "Click 'Add or remove scopes'"
+info "Filter for:  calendar"
+info "Tick:        $SCOPE"
+info "             ('See, edit, share, and permanently delete all the calendars')"
+info "Update, then Save"
+info ""
+warn "Do NOT skip this step. An undeclared scope is never offered on the consent"
+warn "screen, so Google grants only your email and the plugin gets 403 errors."
+pause
+
+# ---- Step 6: Manual - Publish app ----
+step "Manual step 3/4: Publish the app"
+info "Open in your browser:"
+info ""
+info "  https://console.cloud.google.com/auth/audience?project=$PROJECT_ID"
+info ""
+info "Under 'Publishing status', click 'Publish app'"
+info "If it says 'In production', nothing to do."
+info ""
+warn "In Testing, Google expires refresh tokens after 7 days."
+warn "Unverified production apps show a one-time warning, then work forever."
+pause
+
+# ---- Step 7: Manual - Create OAuth client ----
+step "Manual step 4/4: Create a Desktop OAuth client"
+info "Open in your browser:"
+info ""
+info "  https://console.cloud.google.com/auth/clients?project=$PROJECT_ID"
+info ""
+info "Create client → Application type: Desktop app"
+info "Name: Omarchy Calendar"
+info ""
+info "Copy the Client ID and Client Secret from the dialog."
+pause
+
+# ---- Step 8: Collect credentials ----
+step "Enter your OAuth credentials"
+printf '   Client ID: '
+read -r CLIENT_ID
+printf '   Client Secret: '
+read -r CLIENT_SECRET
+
+if [ -z "$CLIENT_ID" ] || [ -z "$CLIENT_SECRET" ]; then
+  warn "Client ID and Secret are required."
+  exit 1
+fi
+
+# ---- Step 9: Write credentials to plugin ----
+step "Saving credentials to plugin"
+PLUGIN_DIR="$HOME/.config/omarchy/plugins/io.github.fullo.gcal"
+OAUTH_FILE="$PLUGIN_DIR/OAuth.js"
+
+if [ ! -f "$OAUTH_FILE" ]; then
+  warn "OAuth.js not found at $OAUTH_FILE"
+  exit 1
+fi
+
+# Replace placeholder credentials
+sed -i "s|DEFAULT_CLIENT_ID = \"YOUR_CLIENT_ID.apps.googleusercontent.com\"|DEFAULT_CLIENT_ID = \"$CLIENT_ID\"|" "$OAUTH_FILE"
+sed -i "s|DEFAULT_CLIENT_SECRET = \"YOUR_CLIENT_SECRET\"|DEFAULT_CLIENT_SECRET = \"$CLIENT_SECRET\"|" "$OAUTH_FILE"
+
+info "Credentials saved to $OAUTH_FILE"
+
+# ---- Step 10: Restart shell ----
+step "Restarting Omarchy shell"
+if command -v omarchy >/dev/null 2>&1; then
+  omarchy restart shell 2>/dev/null || true
+  info "Shell restarted"
+else
+  warn "omarchy command not found. Restart manually."
+fi
+
+cat <<EOF
+
+\033[1;32m✓ Setup complete!\033[0m
+
+To authenticate:
+  1. Click the calendar icon in the bar
+  2. Go to Setup → Advanced Settings
+  3. Click 'Connect to Google'
+  4. Authorize in the browser
+  5. Paste the redirect URL
+  6. Done!
+
+Your credentials: $CLIENT_ID
+
+EOF

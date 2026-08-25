@@ -28,6 +28,15 @@ Panel {
   property bool authenticating: false
   property string authCodeInput: ""
   property string authStatus: ""
+  property bool showAdvanced: false
+
+  // iCal state
+  property string icalInput: ""
+  property bool icalConnecting: false
+
+  // Mode: "ical" (default) or "oauth"
+  readonly property bool useOAuth: OAuth.isAuthenticated(root.settings)
+  readonly property bool useIcal: !useOAuth && setting("icalUrl", "") !== ""
 
   // View state
   property int activeTab: 0
@@ -83,23 +92,39 @@ Panel {
   }
 
   function refresh() {
-    OAuth.getValidToken(root.settings, function(ok, token) {
-      if (!ok) {
-        fetchError = "Connect to Google Calendar in the Setup tab"
-        return
-      }
-      fetchError = ""
-      Model.fetchAgenda(token, enabledCals, function(events) {
+    if (useOAuth) {
+      // Google Calendar API via OAuth
+      OAuth.getValidToken(root.settings, function(ok, token) {
+        if (!ok) {
+          fetchError = "OAuth expired — reconnect in Setup"
+          return
+        }
+        fetchError = ""
+        Model.fetchGoogleAgenda(token, enabledCals, function(events) {
+          root.allEvents = events
+          root.todayEvents = Model.eventsForToday(events)
+          root.weekEvents = Model.eventsForThisWeek(events)
+          root.eventGroups = Model.groupEventsByDay(root.weekEvents)
+          if (events.length === 0) root.fetchError = "No upcoming events"
+        })
+        Model.fetchGoogleCalendars(token, function(cals) {
+          root.calendars = cals
+        })
+      })
+    } else if (useIcal) {
+      // iCal feed (read-only)
+      var url = setting("icalUrl", "")
+      Model.fetchIcal(url, function(events) {
+        fetchError = ""
         root.allEvents = events
         root.todayEvents = Model.eventsForToday(events)
         root.weekEvents = Model.eventsForThisWeek(events)
         root.eventGroups = Model.groupEventsByDay(root.weekEvents)
         if (events.length === 0) root.fetchError = "No upcoming events"
       })
-      Model.fetchCalendars(token, function(cals) {
-        root.calendars = cals
-      })
-    })
+    } else {
+      fetchError = "Add an iCal URL or connect Google Calendar in Setup"
+    }
   }
 
   function openEvent(link) {
@@ -775,24 +800,24 @@ Panel {
           }
 
           // ================================================================
-          //  TAB 4: SETUP (OAuth)
+          //  TAB 4: SETUP
           // ================================================================
           Column {
             visible: root.activeTab === 4
             width: parent.width
             spacing: Style.space(10)
 
-            // Status indicator
+            // ---- Mode indicator ----
             Rectangle {
               width: parent.width
-              height: statusRow.implicitHeight + Style.space(12)
+              height: modeRow.implicitHeight + Style.space(12)
               radius: Style.cornerRadius
               border.width: 1
               border.color: Qt.darker(root.contentForeground, 1.4)
               color: "transparent"
 
               Row {
-                id: statusRow
+                id: modeRow
                 anchors.left: parent.left
                 anchors.leftMargin: Style.space(10)
                 anchors.right: parent.right
@@ -804,12 +829,12 @@ Panel {
                   width: Style.space(12)
                   height: Style.space(12)
                   radius: Style.space(6)
-                  color: OAuth.isAuthenticated(root.settings) ? "#4caf50" : "#f44336"
+                  color: root.useOAuth ? "#4caf50" : (root.useIcal ? "#2196f3" : "#9e9e9e")
                   anchors.verticalCenter: parent.verticalCenter
                 }
 
                 Text {
-                  text: OAuth.isAuthenticated(root.settings) ? "Connected to Google Calendar" : "Not connected"
+                  text: root.useOAuth ? "Google Calendar (read/write)" : (root.useIcal ? "iCal feed (read-only)" : "Not configured")
                   color: root.contentForeground
                   font.family: root.contentFontFamily
                   font.pixelSize: Style.font.body
@@ -818,56 +843,26 @@ Panel {
               }
             }
 
-            // Status message
-            Text {
-              visible: root.authStatus !== ""
-              width: parent.width
-              text: root.authStatus
-              color: OAuth.isAuthenticated(root.settings) ? "#4caf50" : Qt.darker(root.contentForeground, 1.5)
-              font.family: root.contentFontFamily
-              font.pixelSize: Style.font.bodySmall
-              wrapMode: Text.Wrap
-            }
-
-            // Connect button
-            Rectangle {
-              visible: !OAuth.isAuthenticated(root.settings) && !root.authenticating && root.authCodeInput === ""
-              width: connectLabel.implicitWidth + Style.space(30)
-              height: Style.space(36)
-              radius: Style.cornerRadius
-              color: connectMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : Color.accent
-
-              Text {
-                id: connectLabel
-                anchors.centerIn: parent
-                text: "Connect to Google"
-                color: "white"
-                font.family: root.contentFontFamily
-                font.pixelSize: Style.font.body
-                font.bold: true
-              }
-
-              MouseArea {
-                id: connectMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.startAuth()
-              }
-            }
-
-            // Auth code input (shown after browser opens)
+            // ---- iCal URL input ----
             Column {
-              visible: root.authenticating || root.authCodeInput !== ""
               width: parent.width
               spacing: Style.space(6)
 
               Text {
+                text: "ICAL FEED URL"
+                color: Qt.darker(root.contentForeground, 1.4)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption
+                font.letterSpacing: 1
+                font.bold: true
+              }
+
+              Text {
                 width: parent.width
-                text: "Paste the URL from the browser after authorizing:"
+                text: "Paste your calendar's iCal URL. Find it in Google Calendar → Settings → Calendars → Integrate calendar."
                 color: Qt.darker(root.contentForeground, 1.5)
                 font.family: root.contentFontFamily
-                font.pixelSize: Style.font.bodySmall
+                font.pixelSize: Style.font.caption
                 wrapMode: Text.Wrap
               }
 
@@ -880,7 +875,6 @@ Panel {
                 color: "transparent"
 
                 TextInput {
-                  id: authCodeField
                   anchors.fill: parent
                   anchors.margins: Style.space(8)
                   color: root.contentForeground
@@ -888,73 +882,336 @@ Panel {
                   font.pixelSize: Style.font.body
                   clip: true
                   verticalAlignment: Text.AlignVCenter
-                  text: root.authCodeInput
-                  onTextChanged: root.authCodeInput = text
+                  text: root.icalInput
+                  onTextChanged: root.icalInput = text
                 }
               }
 
-              Rectangle {
-                width: submitLabel.implicitWidth + Style.space(30)
-                height: Style.space(32)
-                radius: Style.cornerRadius
-                color: submitMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : Color.accent
+              Row {
+                spacing: Style.space(6)
 
-                Text {
-                  id: submitLabel
-                  anchors.centerIn: parent
-                  text: root.authenticating ? "Connecting..." : "Connect"
-                  color: "white"
-                  font.family: root.contentFontFamily
-                  font.pixelSize: Style.font.body
+                Rectangle {
+                  width: icalSaveLabel.implicitWidth + Style.space(30)
+                  height: Style.space(32)
+                  radius: Style.cornerRadius
+                  color: icalSaveMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : Color.accent
+
+                  Text {
+                    id: icalSaveLabel
+                    anchors.centerIn: parent
+                    text: "Save"
+                    color: "white"
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.body
+                  }
+
+                  MouseArea {
+                    id: icalSaveMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      var entry = { id: root.moduleName }
+                      for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
+                      entry.icalUrl = root.icalInput.trim()
+                      root.settings = entry
+                      if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
+                      if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+                        root.bar.shell.updateEntryInline(root.moduleName, entry)
+                      root.authStatus = root.icalInput.trim() !== "" ? "iCal URL saved" : "iCal URL cleared"
+                      Qt.callLater(root.refresh)
+                    }
+                  }
                 }
 
-                MouseArea {
-                  id: submitMouse
-                  anchors.fill: parent
-                  hoverEnabled: true
-                  cursorShape: Qt.PointingHandCursor
-                  onClicked: root.submitAuthCode()
-                  enabled: !root.authenticating
+                Rectangle {
+                  visible: setting("icalUrl", "") !== ""
+                  width: icalClearLabel.implicitWidth + Style.space(30)
+                  height: Style.space(32)
+                  radius: Style.cornerRadius
+                  color: "transparent"
+                  border.width: 1
+                  border.color: Qt.darker(root.contentForeground, 1.4)
+
+                  Text {
+                    id: icalClearLabel
+                    anchors.centerIn: parent
+                    text: "Clear"
+                    color: Qt.darker(root.contentForeground, 1.5)
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.body
+                  }
+
+                  MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      root.icalInput = ""
+                      var entry = { id: root.moduleName }
+                      for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
+                      entry.icalUrl = ""
+                      root.settings = entry
+                      if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
+                      if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+                        root.bar.shell.updateEntryInline(root.moduleName, entry)
+                      root.authStatus = "iCal URL cleared"
+                      Qt.callLater(root.refresh)
+                    }
+                  }
                 }
+              }
+
+              Text {
+                visible: setting("icalUrl", "") !== ""
+                width: parent.width
+                text: "✓ Saved"
+                color: "#4caf50"
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption
               }
             }
 
-            // Disconnect (when authenticated)
+            // Hairline
             Rectangle {
-              visible: OAuth.isAuthenticated(root.settings)
-              width: discLabel.implicitWidth + Style.space(30)
-              height: Style.space(32)
-              radius: Style.cornerRadius
-              color: "transparent"
-              border.width: 1
-              border.color: Qt.darker(root.contentForeground, 1.4)
+              width: parent.width
+              height: Style.spacing.hairline
+              color: root.contentForeground
+              opacity: 0.12
+            }
 
-              Text {
-                id: discLabel
-                anchors.centerIn: parent
-                text: "Disconnect"
-                color: Qt.darker(root.contentForeground, 1.5)
-                font.family: root.contentFontFamily
-                font.pixelSize: Style.font.body
+            // ---- Advanced Settings (OAuth) ----
+            Column {
+              width: parent.width
+              spacing: Style.space(6)
+
+              Rectangle {
+                width: advLabel.implicitWidth + Style.space(20)
+                height: Style.space(28)
+                radius: Style.cornerRadius
+                color: advMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
+                border.width: 1
+                border.color: Qt.darker(root.contentForeground, 1.4)
+
+                Row {
+                  id: advLabel
+                  anchors.centerIn: parent
+                  spacing: Style.space(6)
+
+                  Text {
+                    text: root.showAdvanced ? "󰅁" : "󰅂"
+                    color: root.contentForeground
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.body
+                  }
+
+                  Text {
+                    text: "Advanced Settings — Google Calendar (read/write)"
+                    color: root.contentForeground
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.caption
+                    font.letterSpacing: 1
+                  }
+                }
+
+                MouseArea {
+                  id: advMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.showAdvanced = !root.showAdvanced
+                }
               }
 
-              MouseArea {
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                  root._updateSettings({
-                    access_token: undefined,
-                    refresh_token: undefined,
-                    expires_at: undefined
-                  })
-                  root.allEvents = []
-                  root.todayEvents = []
-                  root.weekEvents = []
-                  root.eventGroups = []
-                  root.calendars = []
-                  root.barText = "󰃭"
-                  root.authStatus = "Disconnected"
+              // OAuth content (expandable)
+              Column {
+                visible: root.showAdvanced
+                width: parent.width
+                spacing: Style.space(10)
+
+                Text {
+                  width: parent.width
+                  text: "To add events directly from this widget, connect a Google account. You need your own Google OAuth credentials."
+                  color: Qt.darker(root.contentForeground, 1.5)
+                  font.family: root.contentFontFamily
+                  font.pixelSize: Style.font.caption
+                  wrapMode: Text.Wrap
+                }
+
+                // Status message
+                Text {
+                  visible: root.authStatus !== ""
+                  width: parent.width
+                  text: root.authStatus
+                  color: OAuth.isAuthenticated(root.settings) ? "#4caf50" : Qt.darker(root.contentForeground, 1.5)
+                  font.family: root.contentFontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  wrapMode: Text.Wrap
+                }
+
+                // Connect button (when not authenticated)
+                Rectangle {
+                  visible: !OAuth.isAuthenticated(root.settings) && !root.authenticating && root.authCodeInput === ""
+                  width: connectLabel.implicitWidth + Style.space(30)
+                  height: Style.space(36)
+                  radius: Style.cornerRadius
+                  color: connectMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : Color.accent
+
+                  Text {
+                    id: connectLabel
+                    anchors.centerIn: parent
+                    text: "Connect to Google"
+                    color: "white"
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.body
+                    font.bold: true
+                  }
+
+                  MouseArea {
+                    id: connectMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.startAuth()
+                  }
+                }
+
+                // Auth code input
+                Column {
+                  visible: root.authenticating || root.authCodeInput !== ""
+                  width: parent.width
+                  spacing: Style.space(6)
+
+                  Text {
+                    width: parent.width
+                    text: "Paste the URL from the browser after authorizing:"
+                    color: Qt.darker(root.contentForeground, 1.5)
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.bodySmall
+                    wrapMode: Text.Wrap
+                  }
+
+                  Rectangle {
+                    width: parent.width
+                    height: Style.space(32)
+                    radius: Style.cornerRadius
+                    border.width: 1
+                    border.color: Qt.darker(root.contentForeground, 1.4)
+                    color: "transparent"
+
+                    TextInput {
+                      anchors.fill: parent
+                      anchors.margins: Style.space(8)
+                      color: root.contentForeground
+                      font.family: root.contentFontFamily
+                      font.pixelSize: Style.font.body
+                      clip: true
+                      verticalAlignment: Text.AlignVCenter
+                      text: root.authCodeInput
+                      onTextChanged: root.authCodeInput = text
+                    }
+                  }
+
+                  Rectangle {
+                    width: submitLabel.implicitWidth + Style.space(30)
+                    height: Style.space(32)
+                    radius: Style.cornerRadius
+                    color: submitMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : Color.accent
+
+                    Text {
+                      id: submitLabel
+                      anchors.centerIn: parent
+                      text: root.authenticating ? "Connecting..." : "Connect"
+                      color: "white"
+                      font.family: root.contentFontFamily
+                      font.pixelSize: Style.font.body
+                    }
+
+                    MouseArea {
+                      id: submitMouse
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      cursorShape: Qt.PointingHandCursor
+                      onClicked: root.submitAuthCode()
+                      enabled: !root.authenticating
+                    }
+                  }
+                }
+
+                // Disconnect (when authenticated)
+                Rectangle {
+                  visible: OAuth.isAuthenticated(root.settings)
+                  width: discLabel.implicitWidth + Style.space(30)
+                  height: Style.space(32)
+                  radius: Style.cornerRadius
+                  color: "transparent"
+                  border.width: 1
+                  border.color: Qt.darker(root.contentForeground, 1.4)
+
+                  Text {
+                    id: discLabel
+                    anchors.centerIn: parent
+                    text: "Disconnect"
+                    color: Qt.darker(root.contentForeground, 1.5)
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.body
+                  }
+
+                  MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      root._updateSettings({
+                        access_token: undefined,
+                        refresh_token: undefined,
+                        expires_at: undefined
+                      })
+                      root.allEvents = []
+                      root.todayEvents = []
+                      root.weekEvents = []
+                      root.eventGroups = []
+                      root.calendars = []
+                      root.authStatus = "Disconnected"
+                    }
+                  }
+                }
+
+                // Setup script info
+                Column {
+                  visible: !OAuth.isAuthenticated(root.settings)
+                  width: parent.width
+                  spacing: Style.space(4)
+
+                  Text {
+                    width: parent.width
+                    text: "Or run the setup script in a terminal:"
+                    color: Qt.darker(root.contentForeground, 1.5)
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.caption
+                    wrapMode: Text.Wrap
+                  }
+
+                  Rectangle {
+                    width: parent.width
+                    height: setupScriptLabel.implicitHeight + Style.space(10)
+                    radius: Style.cornerRadius
+                    color: Qt.darker(root.contentForeground, 0.9)
+
+                    Text {
+                      id: setupScriptLabel
+                      anchors.left: parent.left
+                      anchors.leftMargin: Style.space(10)
+                      anchors.right: parent.right
+                      anchors.rightMargin: Style.space(10)
+                      anchors.verticalCenter: parent.verticalCenter
+                      text: "omarchy plugin run io.github.fullo.gcal setup"
+                      color: root.contentForeground
+                      font.family: root.contentFontFamily
+                      font.pixelSize: Style.font.bodySmall
+                      wrapMode: Text.Wrap
+                    }
+                  }
                 }
               }
             }
