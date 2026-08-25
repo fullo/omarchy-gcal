@@ -483,47 +483,25 @@ Panel {
                     anchors.verticalCenter: parent.verticalCenter
                   }
 
-                  Column {
-                    width: Style.space(80)
+                  Text {
+                    width: Style.space(90)
                     anchors.verticalCenter: parent.verticalCenter
-                    Text {
-                      text: Model.isAllDayEvent(modelData) ? "All day" : Model.formatEventTime(modelData)
-                      color: evMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
-                      font.family: root.contentFontFamily
-                      font.pixelSize: Style.font.body
-                    }
+                    text: Model.isAllDayEvent(modelData) ? "All day" : Model.formatEventTime(modelData)
+                    color: evMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.body
+                    elide: Text.ElideRight
                   }
 
-                  Rectangle {
-                    width: Style.spacing.hairline
-                    height: evDetails.implicitHeight
+                  Text {
+                    width: parent.width - Style.space(90) - Style.space(6) - Style.space(8) * 2
                     anchors.verticalCenter: parent.verticalCenter
-                    color: root.contentForeground
-                    opacity: 0.15
-                  }
-
-                  Column {
-                    id: evDetails
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - Style.space(80) - Style.space(8) - Style.spacing.hairline - Style.space(8)
-                    Text {
-                      width: parent.width
-                      text: modelData.title || "(No title)"
-                      color: evMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
-                      font.family: root.contentFontFamily
-                      font.pixelSize: Style.font.body
-                      font.bold: true
-                      elide: Text.ElideRight
-                    }
-                    Text {
-                      visible: modelData.location !== ""
-                      width: parent.width
-                      text: "󰍹 " + modelData.location
-                      color: Qt.darker(root.contentForeground, 1.5)
-                      font.family: root.contentFontFamily
-                      font.pixelSize: Style.font.caption
-                      elide: Text.ElideRight
-                    }
+                    text: modelData.title || "(No title)"
+                    color: evMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.body
+                    font.bold: true
+                    elide: Text.ElideRight
                   }
                 }
 
@@ -603,7 +581,7 @@ Panel {
                       }
 
                       Text {
-                        width: parent.width - Style.space(52) - Style.space(6) - Style.space(8) * 2
+                        width: Style.space(90)
                         anchors.verticalCenter: parent.verticalCenter
                         text: Model.isAllDayEvent(modelData) ? "All day" : (modelData.startTime || "")
                         color: wEvMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
@@ -613,12 +591,13 @@ Panel {
                       }
 
                       Text {
-                        width: parent.width - Style.space(52) - Style.space(6) - Style.space(8) * 3
+                        width: parent.width - Style.space(90) - Style.space(6) - Style.space(8) * 2
                         anchors.verticalCenter: parent.verticalCenter
                         text: modelData.title || "(No title)"
                         color: wEvMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
                         font.family: root.contentFontFamily
                         font.pixelSize: Style.font.body
+                        font.bold: true
                         elide: Text.ElideRight
                       }
                     }
@@ -894,7 +873,7 @@ Panel {
                         }
 
                         Text {
-                          width: parent.width - Style.space(52) - Style.space(6) - Style.space(8) * 2
+                          width: Style.space(90)
                           anchors.verticalCenter: parent.verticalCenter
                           text: Model.isAllDayEvent(modelData) ? "All day" : (modelData.startTime || "")
                           color: mevMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
@@ -904,12 +883,13 @@ Panel {
                         }
 
                         Text {
-                          width: parent.width - Style.space(52) - Style.space(6) - Style.space(8) * 3
+                          width: parent.width - Style.space(90) - Style.space(6) - Style.space(8) * 2
                           anchors.verticalCenter: parent.verticalCenter
                           text: modelData.title || "(No title)"
                           color: mevMouse.containsMouse ? Style.hoverStateColor(root.contentForeground, Color.accent) : root.contentForeground
                           font.family: root.contentFontFamily
                           font.pixelSize: Style.font.body
+                          font.bold: true
                           elide: Text.ElideRight
                         }
                       }
