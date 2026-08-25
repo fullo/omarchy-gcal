@@ -29,6 +29,7 @@ BarWidget {
   readonly property var enabledCals: Model.settingsEnabledCals(setting("enabledCalendars", ""))
   readonly property bool showNextEvent: setting("showNextEvent", true) !== false
   readonly property bool iconOnly: setting("iconOnly", false) === true
+  readonly property bool showDate: setting("showDate", false) === true
   readonly property string tooltipMode: setting("tooltipMode", "upcoming") || "upcoming"
 
   function refresh() {
@@ -73,7 +74,12 @@ BarWidget {
   }
 
   function _updateBar(events) {
-    if (showNextEvent && !iconOnly) {
+    if (showDate) {
+      var now = new Date()
+      var dn = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]
+      var mn = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+      barText = "󰃭 " + dn[now.getDay()] + " " + now.getDate() + " " + mn[now.getMonth()]
+    } else if (showNextEvent && !iconOnly) {
       barText = Model.formatBarLabel(events)
     } else {
       barText = "󰃭"
@@ -83,6 +89,7 @@ BarWidget {
 
   onShowNextEventChanged: Qt.callLater(function() { _updateBar(root.allEvents) })
   onIconOnlyChanged: Qt.callLater(function() { _updateBar(root.allEvents) })
+  onShowDateChanged: Qt.callLater(function() { _updateBar(root.allEvents) })
 
   function injectPanel() {
     var target = panelLoader.item

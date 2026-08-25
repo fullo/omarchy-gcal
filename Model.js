@@ -357,8 +357,12 @@ function weekdayLabel(weekday) {
 
 // ---- Grouping & display ----
 
-function eventCalendarColor(event) {
-    // For iCal: blue. For OAuth: would need calendar colors from API
+function eventCalendarColor(event, calendars) {
+    if (calendars && event.calendar) {
+        for (var i = 0; i < calendars.length; i++) {
+            if (calendars[i].id === event.calendar) return calendars[i].color || "#4fa8de"
+        }
+    }
     return "#4fa8de"
 }
 
@@ -416,12 +420,19 @@ function formatBarTooltip(events, mode) {
         return dn[now.getDay()] + ", " + mn[now.getMonth()] + " " + now.getDate() + " " + now.getFullYear()
     }
     if (!events || events.length === 0) return "No upcoming events"
-    var lines = ["Upcoming (" + events.length + "):"]
-    for (var i = 0; i < Math.min(events.length, 5); i++) {
-        var e = events[i], t = isAllDayEvent(e) ? "All day" : (e.startTime || "")
+    var now = new Date()
+    var upcoming = []
+    for (var i = 0; i < events.length; i++) {
+        if (events[i].startParsed && events[i].startParsed.getTime() >= now.getTime())
+            upcoming.push(events[i])
+    }
+    if (upcoming.length === 0) return "No upcoming events"
+    var lines = ["Upcoming (" + upcoming.length + "):"]
+    for (var j = 0; j < Math.min(upcoming.length, 5); j++) {
+        var e = upcoming[j], t = isAllDayEvent(e) ? "All day" : (e.startTime || "")
         lines.push("  " + t + "  " + (e.title || ""))
     }
-    if (events.length > 5) lines.push("  … and " + (events.length - 5) + " more")
+    if (upcoming.length > 5) lines.push("  … and " + (upcoming.length - 5) + " more")
     return lines.join("\n")
 }
 

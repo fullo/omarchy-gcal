@@ -27,6 +27,7 @@ Panel {
   // Settings
   readonly property bool showNextEvent: setting("showNextEvent", true) !== false
   readonly property bool iconOnly: setting("iconOnly", false) === true
+  readonly property bool showDate: setting("showDate", false) === true
   readonly property string tooltipMode: setting("tooltipMode", "upcoming") || "upcoming"
 
   // Auth state
@@ -149,11 +150,12 @@ Panel {
         root.calendars = calsList
         if (allCalEvents.length === 0) root.fetchError = "No upcoming events"
       }
+      var icalColors = ["#2196f3", "#e91e63", "#4caf50", "#ff9800", "#9c27b0", "#00bcd4"]
       for (var ui = 0; ui < urls.length; ui++) {
         (function(url, idx) {
           var feedName = url.match(/\/ical\/([^/]+)\//)
           var calName = feedName ? decodeURIComponent(feedName[1]) : "iCal Feed " + (idx + 1)
-          calsList.push({ id: "ical-" + idx, name: calName, access: "read-only", color: "#2196f3" })
+          calsList.push({ id: "ical-" + idx, name: calName, access: "read-only", color: icalColors[idx % icalColors.length] })
           Model.fetchIcal(url, function(events) {
             for (var ei = 0; ei < events.length; ei++) events[ei].calendar = "ical-" + idx
             allCalEvents = allCalEvents.concat(events)
@@ -456,7 +458,7 @@ Panel {
                     width: Style.space(6)
                     height: Style.space(6)
                     radius: Style.space(3)
-                    color: Model.eventCalendarColor(modelData)
+                    color: Model.eventCalendarColor(modelData, root.calendars)
                     anchors.verticalCenter: parent.verticalCenter
                   }
 
@@ -575,7 +577,7 @@ Panel {
                         width: Style.space(6)
                         height: Style.space(6)
                         radius: Style.space(3)
-                        color: Model.eventCalendarColor(modelData)
+                        color: Model.eventCalendarColor(modelData, root.calendars)
                         anchors.verticalCenter: parent.verticalCenter
                       }
 
@@ -865,7 +867,7 @@ Panel {
                           width: Style.space(6)
                           height: Style.space(6)
                           radius: Style.space(3)
-                          color: Model.eventCalendarColor(modelData)
+                          color: Model.eventCalendarColor(modelData, root.calendars)
                           anchors.verticalCenter: parent.verticalCenter
                         }
 
@@ -1017,8 +1019,8 @@ Panel {
                 Row {
                   anchors.left: parent.left
                   anchors.leftMargin: Style.space(8)
-                  anchors.right: delArea.left
-                  anchors.rightMargin: Style.space(4)
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(8)
                   anchors.verticalCenter: parent.verticalCenter
                   spacing: Style.space(6)
 
@@ -1056,65 +1058,62 @@ Panel {
                     font.family: root.contentFontFamily
                     font.pixelSize: Style.font.body
                     anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - Style.space(10) - Style.space(14) - Style.space(6) * 2
+                    width: parent.width - Style.space(10) - Style.space(14) - Style.space(20) - Style.space(6) * 4
                     elide: Text.ElideRight
                   }
-                }
 
-                Rectangle {
-                  id: delArea
-                  width: Style.space(20)
-                  height: Style.space(20)
-                  radius: Style.space(10)
-                  color: delMouse.containsMouse ? Qt.darker(root.contentForeground, 1.4) : "transparent"
-                  anchors.right: parent.right
-                  anchors.rightMargin: Style.space(8)
-                  anchors.verticalCenter: parent.verticalCenter
+                  Rectangle {
+                    width: Style.space(20)
+                    height: Style.space(20)
+                    radius: Style.space(10)
+                    color: delMouse.containsMouse ? Qt.darker(root.contentForeground, 1.4) : "transparent"
+                    anchors.verticalCenter: parent.verticalCenter
 
-                  Text {
-                    anchors.centerIn: parent
-                    text: "×"
-                    color: delMouse.containsMouse ? root.contentForeground : Qt.darker(root.contentForeground, 1.5)
-                    font.family: root.contentFontFamily
-                    font.pixelSize: Style.font.body
-                    font.bold: true
-                  }
+                    Text {
+                      anchors.centerIn: parent
+                      text: "×"
+                      color: delMouse.containsMouse ? root.contentForeground : Qt.darker(root.contentForeground, 1.5)
+                      font.family: root.contentFontFamily
+                      font.pixelSize: Style.font.body
+                      font.bold: true
+                    }
 
-                  MouseArea {
-                    id: delMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    preventStealing: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                      if (modelData.id.indexOf("ical-") === 0) {
-                        var entry = { id: root.moduleName }
-                        for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
-                        var urls = []
-                        try { urls = JSON.parse(entry.icalUrl || "[]") } catch(e) { urls = entry.icalUrl ? [entry.icalUrl] : [] }
-                        if (!Array.isArray(urls)) urls = [urls]
-                        var idx = parseInt(modelData.id.substring(5))
-                        if (idx >= 0 && idx < urls.length) urls.splice(idx, 1)
-                        entry.icalUrl = JSON.stringify(urls)
-                        root.settings = entry
-                        if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
-                        if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
-                          root.bar.shell.updateEntryInline(root.moduleName, entry)
-                        root.authStatus = "iCal feed removed"
-                        Qt.callLater(root.refresh)
-                      } else {
-                        var entry2 = { id: root.moduleName }
-                        for (var k2 in root.settings) if (k2 !== "id") entry2[k2] = root.settings[k2]
-                        entry2.accessToken = ""
-                        entry2.refreshToken = ""
-                        entry2.tokenExpiry = ""
-                        root.settings = entry2
-                        if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry2
-                        if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
-                          root.bar.shell.updateEntryInline(root.moduleName, entry2)
-                        root.calendars = []
-                        root.authStatus = "Google account disconnected"
-                        Qt.callLater(root.refresh)
+                    MouseArea {
+                      id: delMouse
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      preventStealing: true
+                      cursorShape: Qt.PointingHandCursor
+                      onClicked: {
+                        if (modelData.id.indexOf("ical-") === 0) {
+                          var entry = { id: root.moduleName }
+                          for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
+                          var urls = []
+                          try { urls = JSON.parse(entry.icalUrl || "[]") } catch(e) { urls = entry.icalUrl ? [entry.icalUrl] : [] }
+                          if (!Array.isArray(urls)) urls = [urls]
+                          var idx = parseInt(modelData.id.substring(5))
+                          if (idx >= 0 && idx < urls.length) urls.splice(idx, 1)
+                          entry.icalUrl = JSON.stringify(urls)
+                          root.settings = entry
+                          if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
+                          if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+                            root.bar.shell.updateEntryInline(root.moduleName, entry)
+                          root.authStatus = "iCal feed removed"
+                          Qt.callLater(root.refresh)
+                        } else {
+                          var entry2 = { id: root.moduleName }
+                          for (var k2 in root.settings) if (k2 !== "id") entry2[k2] = root.settings[k2]
+                          entry2.accessToken = ""
+                          entry2.refreshToken = ""
+                          entry2.tokenExpiry = ""
+                          root.settings = entry2
+                          if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry2
+                          if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+                            root.bar.shell.updateEntryInline(root.moduleName, entry2)
+                          root.calendars = []
+                          root.authStatus = "Google account disconnected"
+                          Qt.callLater(root.refresh)
+                        }
                       }
                     }
                   }
@@ -1332,6 +1331,69 @@ Panel {
                 }
               }
 
+              // Show today's date toggle
+              Rectangle {
+                width: parent.width
+                height: toggleRow3.implicitHeight + Style.space(10)
+                radius: Style.cornerRadius
+                color: toggleMouse3.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
+
+                Row {
+                  id: toggleRow3
+                  anchors.left: parent.left
+                  anchors.leftMargin: Style.space(10)
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(10)
+                  anchors.verticalCenter: parent.verticalCenter
+                  spacing: Style.space(10)
+
+                  Rectangle {
+                    width: Style.space(16)
+                    height: Style.space(16)
+                    radius: Style.space(3)
+                    border.width: 1
+                    border.color: Qt.darker(root.contentForeground, 1.4)
+                    color: root.showDate ? Color.accent : "transparent"
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                      anchors.centerIn: parent
+                      visible: root.showDate
+                      text: "✓"
+                      color: "white"
+                      font.family: root.contentFontFamily
+                      font.pixelSize: Style.font.caption
+                      font.bold: true
+                    }
+                  }
+
+                  Text {
+                    text: "Show today's date in bar"
+                    color: root.contentForeground
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.body
+                    anchors.verticalCenter: parent.verticalCenter
+                  }
+                }
+
+                MouseArea {
+                  id: toggleMouse3
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  preventStealing: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: {
+                    var entry = { id: root.moduleName }
+                    for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
+                    entry.showDate = !root.showDate
+                    root.settings = entry
+                    if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
+                    if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+                      root.bar.shell.updateEntryInline(root.moduleName, entry)
+                  }
+                }
+              }
+
               // Tooltip mode selector
               Column {
                 width: parent.width
@@ -1419,7 +1481,7 @@ Panel {
               spacing: Style.space(6)
 
               Text {
-                text: "ICAL FEED URL"
+                text: "Ical feed"
                 color: Qt.darker(root.contentForeground, 1.4)
                 font.family: root.contentFontFamily
                 font.pixelSize: Style.font.caption
