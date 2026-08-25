@@ -4,7 +4,7 @@
   "name": "Google Calendar",
   "version": "1.0.0",
   "author": "fullo",
-  "description": "Google Calendar appointments in the bar and panel",
+  "description": "Google Calendar events in the bar and panel (OAuth, no dependencies)",
   "kinds": [
     "bar-widget"
   ],
@@ -13,7 +13,7 @@
   },
   "barWidget": {
     "displayName": "Google Calendar",
-    "description": "Shows upcoming Google Calendar events",
+    "description": "Google Calendar events with Today/Week/Month views",
     "category": "Info",
     "allowMultiple": false
   }

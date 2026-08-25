@@ -4,6 +4,7 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
+import "OAuth.js" as OAuth
 
 Panel {
   id: root
@@ -22,6 +23,12 @@ Panel {
   property var eventGroups: []
   property var calendars: []
   property string fetchError: ""
+
+  // Auth state
+  property var tokens: OAuth.loadTokens()
+  property bool authenticating: false
+  property string authCodeInput: ""
+  property string authStatus: ""
 
   // View state
   property int activeTab: 0
@@ -42,7 +49,6 @@ Panel {
   readonly property var weekdays: Model.weekdayOrder(1)
   readonly property var weeks: Model.monthGrid(viewYear, viewMonth, 1, todayKey)
 
-  // Event count on a given day key
   function eventsOnDay(dayKey) {
     var count = 0
     for (var i = 0; i < allEvents.length; i++) {
@@ -78,17 +84,21 @@ Panel {
   }
 
   function refresh() {
-    if (!agendaProc.running) agendaProc.running = true
-    if (!listProc.running) listProc.running = true
-  }
-
-  function buildGcalcliArgs() {
-    var args = ["gcalcli", "--tsv", "--nocolor", "agenda"]
-    var cals = root.enabledCals
-    if (cals) {
-      for (var i = 0; i < cals.length; i++) args.push("--cal", cals[i])
+    if (!OAuth.isConfigured(tokens)) {
+      fetchError = "Configure OAuth credentials first"
+      return
     }
-    return args
+    fetchError = ""
+    Model.fetchAgenda(tokens, enabledCals, function(events) {
+      root.allEvents = events
+      root.todayEvents = Model.eventsForToday(events)
+      root.weekEvents = Model.eventsForThisWeek(events)
+      root.eventGroups = Model.groupEventsByDay(root.weekEvents)
+      if (events.length === 0) root.fetchError = "No upcoming events"
+    })
+    Model.fetchCalendars(tokens, function(cals) {
+      root.calendars = cals
+    })
   }
 
   function openEvent(link) {
@@ -109,45 +119,54 @@ Panel {
     root.viewMonth = now.getMonth()
   }
 
-  // ---- Process: agenda ----
+  // ---- OAuth ----
 
-  Process {
-    id: agendaProc
-    command: root.buildGcalcliArgs()
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var raw = String(text || "").trim()
-        root.allEvents = raw ? Model.parseTsvAgenda(raw) : []
-        root.todayEvents = Model.eventsForToday(root.allEvents)
-        root.weekEvents = Model.eventsForThisWeek(root.allEvents)
-        root.eventGroups = Model.groupEventsByDay(root.weekEvents)
-        root.fetchError = root.allEvents.length === 0 ? "No upcoming events" : ""
-      }
+  function startAuth() {
+    if (!tokens || !tokens.client_id || !tokens.client_secret) {
+      authStatus = "Enter client ID and secret first"
+      return
     }
-    onExited: function(exitCode) {
-      if (exitCode !== 0) {
-        root.allEvents = []
-        root.todayEvents = []
-        root.weekEvents = []
-        root.eventGroups = []
-        root.fetchError = "gcalcli error (is it installed?)"
-      }
-    }
+    authenticating = true
+    authStatus = "Opening browser..."
+    authCodeInput = ""
+    root.authUrl = OAuth.authUrl(tokens.client_id)
+    Qt.openUrlExternally(root.authUrl)
   }
 
-  // ---- Process: calendar list ----
+  property string authUrl: ""
 
-  Process {
-    id: listProc
-    command: ["gcalcli", "--nocolor", "list"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        root.calendars = Model.parseCalendarList(text)
-      }
+  function submitAuthCode() {
+    if (authCodeInput.trim() === "") {
+      authStatus = "Paste the authorization code"
+      return
     }
+    authStatus = "Exchanging code..."
+    OAuth.exchangeCode(tokens.client_id, tokens.client_secret, authCodeInput.trim(), function(ok, err) {
+      authenticating = false
+      if (ok) {
+        tokens = OAuth.loadTokens()
+        authStatus = "Authenticated!"
+        authCodeInput = ""
+        refresh()
+      } else {
+        authStatus = err || "Authentication failed"
+      }
+    })
   }
+
+  function saveCredentials() {
+    var t = tokens || {}
+    t.client_id = clientIdInput.text
+    t.client_secret = clientSecretInput.text
+    tokens = t
+    OAuth._save(t)
+    authStatus = "Credentials saved"
+  }
+
+  property string clientIdInput: tokens ? (tokens.client_id || "") : ""
+  property string clientSecretInput: tokens ? (tokens.client_secret || "") : ""
+
+  // ---- Timer ----
 
   Timer {
     interval: 5 * 60 * 1000
@@ -156,6 +175,8 @@ Panel {
     triggeredOnStart: true
     onTriggered: root.refresh()
   }
+
+  // ---- IPC ----
 
   IpcHandler {
     target: root.ipcTarget
@@ -166,6 +187,8 @@ Panel {
     function toggle(): void { root.toggle() }
     function refresh(): void { root.refresh() }
   }
+
+  // ---- Panel UI ----
 
   KeyboardPanel {
     id: panel
@@ -191,6 +214,7 @@ Panel {
         else if (t === "2") root.setTab(1)
         else if (t === "3") root.setTab(2)
         else if (t === "4") root.setTab(3)
+        else if (t === "5") root.setTab(4)
         else if (t === "t" || t === "T") root.goToToday()
         else if (root.activeTab === 2) {
           if (t === "[") root.moveMonth(-1)
@@ -247,7 +271,7 @@ Panel {
             spacing: Style.space(4)
 
             Repeater {
-              model: ["Today", "Week", "Month", "Calendars"]
+              model: ["Today", "Week", "Month", "Calendars", "Setup"]
 
               Rectangle {
                 required property string modelData
@@ -513,7 +537,6 @@ Panel {
               width: parent.width
               spacing: Style.space(6)
 
-              // Month navigation
               Item {
                 width: parent.width
                 height: monthNav.height
@@ -559,16 +582,13 @@ Panel {
                 }
               }
 
-              // Month grid
               Column {
                 id: monthGrid
                 anchors.horizontalCenter: parent.horizontalCenter
                 spacing: Style.space(2)
 
-                // Header row
                 Row {
                   spacing: root.cellSpacing
-
                   Item { width: root.weekColumnWidth; height: Style.space(14) }
                   Item { width: Style.space(8); height: Style.space(14) }
 
@@ -590,7 +610,6 @@ Panel {
                   }
                 }
 
-                // Week rows
                 Repeater {
                   model: root.weeks
 
@@ -636,7 +655,6 @@ Panel {
                           font.bold: modelData.today
                         }
 
-                        // Event dot indicator
                         Rectangle {
                           visible: evCount > 0 && modelData.inMonth
                           anchors.bottom: parent.bottom
@@ -655,10 +673,7 @@ Panel {
                           hoverEnabled: true
                           cursorShape: evCount > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
                           onClicked: {
-                            if (evCount > 0) {
-                              // Switch to today/week view if clicking a day with events
-                              root.setTab(0)
-                            }
+                            if (evCount > 0) root.setTab(0)
                           }
                         }
                       }
@@ -696,7 +711,7 @@ Panel {
                 radius: Style.cornerRadius
                 color: calMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
 
-                property bool isEnabled: Model.calendarIsEnabled(modelData.name, root.enabledCals)
+                property bool isEnabled: Model.calendarIsEnabled(modelData.id, root.enabledCals)
 
                 Row {
                   id: calRow
@@ -707,7 +722,6 @@ Panel {
                   anchors.verticalCenter: parent.verticalCenter
                   spacing: Style.space(10)
 
-                  // Checkbox
                   Rectangle {
                     width: Style.space(16)
                     height: Style.space(16)
@@ -754,11 +768,10 @@ Panel {
                   hoverEnabled: true
                   cursorShape: Qt.PointingHandCursor
                   onClicked: {
-                    // Toggle calendar - save to settings
                     var cals = root.enabledCals ? root.enabledCals.slice() : []
-                    var idx = cals.indexOf(modelData.name)
+                    var idx = cals.indexOf(modelData.id)
                     if (idx >= 0) cals.splice(idx, 1)
-                    else cals.push(modelData.name)
+                    else cals.push(modelData.id)
                     persistCalendars(cals)
                   }
                 }
@@ -766,14 +779,350 @@ Panel {
             }
 
             Text {
-              visible: root.calendars.length === 0
+              visible: root.calendars.length === 0 && OAuth.isConfigured(root.tokens)
               width: parent.width
-              text: "Run gcalcli list to see calendars"
+              text: "Loading calendars..."
               color: Qt.darker(root.contentForeground, 1.5)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.bodySmall
               font.italic: true
               horizontalAlignment: Text.AlignHCenter
+            }
+          }
+
+          // ================================================================
+          //  TAB 4: SETUP (OAuth)
+          // ================================================================
+          Column {
+            visible: root.activeTab === 4
+            width: parent.width
+            spacing: Style.space(10)
+
+            Text {
+              text: "GOOGLE CALENDAR SETUP"
+              color: Qt.darker(root.contentForeground, 1.4)
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.caption
+              font.letterSpacing: 1
+              font.bold: true
+            }
+
+            // Status
+            Text {
+              visible: root.authStatus !== ""
+              width: parent.width
+              text: root.authStatus
+              color: OAuth.isAuthenticated(root.tokens) ? "#4caf50" : Qt.darker(root.contentForeground, 1.5)
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.Wrap
+            }
+
+            // Auth status indicator
+            Rectangle {
+              width: parent.width
+              height: authStatusRow.implicitHeight + Style.space(12)
+              radius: Style.cornerRadius
+              border.width: 1
+              border.color: Qt.darker(root.contentForeground, 1.4)
+              color: "transparent"
+
+              Row {
+                id: authStatusRow
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(10)
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(10)
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Style.space(10)
+
+                Rectangle {
+                  width: Style.space(12)
+                  height: Style.space(12)
+                  radius: Style.space(6)
+                  color: OAuth.isAuthenticated(root.tokens) ? "#4caf50" : "#f44336"
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Text {
+                  text: OAuth.isAuthenticated(root.tokens) ? "Authenticated" : "Not authenticated"
+                  color: root.contentForeground
+                  font.family: root.contentFontFamily
+                  font.pixelSize: Style.font.body
+                  anchors.verticalCenter: parent.verticalCenter
+                }
+              }
+            }
+
+            // Client ID
+            Column {
+              width: parent.width
+              spacing: Style.space(4)
+
+              Text {
+                text: "Client ID"
+                color: Qt.darker(root.contentForeground, 1.4)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption
+                font.letterSpacing: 1
+              }
+
+              Rectangle {
+                width: parent.width
+                height: Style.space(32)
+                radius: Style.cornerRadius
+                border.width: 1
+                border.color: Qt.darker(root.contentForeground, 1.4)
+                color: "transparent"
+
+                TextInput {
+                  id: clientIdField
+                  anchors.fill: parent
+                  anchors.margins: Style.space(8)
+                  color: root.contentForeground
+                  font.family: root.contentFontFamily
+                  font.pixelSize: Style.font.body
+                  clip: true
+                  verticalAlignment: Text.AlignVCenter
+                  text: root.clientIdInput
+                  onTextChanged: root.clientIdInput = text
+                }
+              }
+            }
+
+            // Client Secret
+            Column {
+              width: parent.width
+              spacing: Style.space(4)
+
+              Text {
+                text: "Client Secret"
+                color: Qt.darker(root.contentForeground, 1.4)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption
+                font.letterSpacing: 1
+              }
+
+              Rectangle {
+                width: parent.width
+                height: Style.space(32)
+                radius: Style.cornerRadius
+                border.width: 1
+                border.color: Qt.darker(root.contentForeground, 1.4)
+                color: "transparent"
+
+                TextInput {
+                  id: clientSecretField
+                  anchors.fill: parent
+                  anchors.margins: Style.space(8)
+                  color: root.contentForeground
+                  font.family: root.contentFontFamily
+                  font.pixelSize: Style.font.body
+                  clip: true
+                  verticalAlignment: Text.AlignVCenter
+                  echoMode: TextInput.Password
+                  text: root.clientSecretInput
+                  onTextChanged: root.clientSecretInput = text
+                }
+              }
+            }
+
+            // Save credentials button
+            Rectangle {
+              width: saveBtnLabel.implicitWidth + Style.space(30)
+              height: Style.space(32)
+              radius: Style.cornerRadius
+              color: saveBtnMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
+              border.width: 1
+              border.color: Qt.darker(root.contentForeground, 1.4)
+
+              Text {
+                id: saveBtnLabel
+                anchors.centerIn: parent
+                text: "Save Credentials"
+                color: root.contentForeground
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.body
+              }
+
+              MouseArea {
+                id: saveBtnMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.saveCredentials()
+              }
+            }
+
+            // Hairline
+            Rectangle {
+              width: parent.width
+              height: Style.spacing.hairline
+              color: root.contentForeground
+              opacity: 0.12
+            }
+
+            // Instructions
+            Column {
+              width: parent.width
+              spacing: Style.space(4)
+
+              Text {
+                text: "SETUP INSTRUCTIONS"
+                color: Qt.darker(root.contentForeground, 1.4)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption
+                font.letterSpacing: 1
+                font.bold: true
+              }
+
+              Text {
+                width: parent.width
+                text: "1. Go to console.cloud.google.com\n2. Create a project (or use existing)\n3. Enable Google Calendar API\n4. Create OAuth 2.0 credentials (Desktop app)\n5. Set redirect URI to: http://localhost:1\n6. Copy Client ID and Secret above\n7. Save, then click Authenticate"
+                color: Qt.darker(root.contentForeground, 1.5)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.bodySmall
+                wrapMode: Text.Wrap
+                lineHeight: 1.4
+              }
+            }
+
+            // Auth code input
+            Column {
+              visible: root.authenticating || root.authCodeInput !== ""
+              width: parent.width
+              spacing: Style.space(4)
+
+              Text {
+                text: "AUTHORIZATION CODE"
+                color: Qt.darker(root.contentForeground, 1.4)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption
+                font.letterSpacing: 1
+              }
+
+              Text {
+                width: parent.width
+                text: "After the browser opens, authorize the app. You'll be redirected to localhost which won't load — copy the full URL from the address bar and paste it below."
+                color: Qt.darker(root.contentForeground, 1.5)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.bodySmall
+                wrapMode: Text.Wrap
+              }
+
+              Rectangle {
+                width: parent.width
+                height: Style.space(32)
+                radius: Style.cornerRadius
+                border.width: 1
+                border.color: Qt.darker(root.contentForeground, 1.4)
+                color: "transparent"
+
+                TextInput {
+                  id: authCodeField
+                  anchors.fill: parent
+                  anchors.margins: Style.space(8)
+                  color: root.contentForeground
+                  font.family: root.contentFontFamily
+                  font.pixelSize: Style.font.body
+                  clip: true
+                  verticalAlignment: Text.AlignVCenter
+                  placeholderText: "Paste URL or authorization code"
+                  placeholderTextColor: Qt.darker(root.contentForeground, 2.0)
+                  text: root.authCodeInput
+                  onTextChanged: root.authCodeInput = text
+                }
+              }
+
+              // Submit button
+              Rectangle {
+                width: submitBtnLabel.implicitWidth + Style.space(30)
+                height: Style.space(32)
+                radius: Style.cornerRadius
+                color: submitBtnMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : Color.accent
+
+                Text {
+                  id: submitBtnLabel
+                  anchors.centerIn: parent
+                  text: root.authenticating ? "Authenticating..." : "Submit Code"
+                  color: "white"
+                  font.family: root.contentFontFamily
+                  font.pixelSize: Style.font.body
+                }
+
+                MouseArea {
+                  id: submitBtnMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.submitAuthCode()
+                  enabled: !root.authenticating
+                }
+              }
+            }
+
+            // Authenticate button
+            Rectangle {
+              visible: !root.authenticating && root.authCodeInput === ""
+              width: authBtnLabel.implicitWidth + Style.space(30)
+              height: Style.space(36)
+              radius: Style.cornerRadius
+              color: authBtnMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : Color.accent
+
+              Text {
+                id: authBtnLabel
+                anchors.centerIn: parent
+                text: OAuth.isAuthenticated(root.tokens) ? "Re-authenticate" : "Authenticate with Google"
+                color: "white"
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.body
+                font.bold: true
+              }
+
+              MouseArea {
+                id: authBtnMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.startAuth()
+              }
+            }
+
+            // Disconnect
+            Rectangle {
+              visible: OAuth.isAuthenticated(root.tokens)
+              width: discBtnLabel.implicitWidth + Style.space(30)
+              height: Style.space(32)
+              radius: Style.cornerRadius
+              color: "transparent"
+              border.width: 1
+              border.color: Qt.darker(root.contentForeground, 1.4)
+
+              Text {
+                id: discBtnLabel
+                anchors.centerIn: parent
+                text: "Disconnect"
+                color: Qt.darker(root.contentForeground, 1.5)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.body
+              }
+
+              MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  OAuth.clearTokens()
+                  root.tokens = OAuth.loadTokens()
+                  root.allEvents = []
+                  root.todayEvents = []
+                  root.weekEvents = []
+                  root.eventGroups = []
+                  root.calendars = []
+                  root.barText = ""
+                  root.authStatus = "Disconnected"
+                }
+              }
             }
           }
         }
@@ -789,7 +1138,6 @@ Panel {
     if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
     if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
       root.bar.shell.updateEntryInline(root.moduleName, entry)
-    // Refresh after filter change
     Qt.callLater(root.refresh)
   }
 }

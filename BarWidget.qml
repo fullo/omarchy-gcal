@@ -4,6 +4,7 @@ import Quickshell.Io
 import qs.Commons
 import qs.Ui
 import "Model.js" as Model
+import "OAuth.js" as OAuth
 
 BarWidget {
   id: root
@@ -12,20 +13,17 @@ BarWidget {
   property var allEvents: []
   property string barText: ""
   property string barTooltip: ""
+  property var tokens: OAuth.loadTokens()
 
   readonly property var enabledCals: Model.settingsEnabledCals(setting("enabledCalendars", ""))
 
   function refresh() {
-    if (!agendaProc.running) agendaProc.running = true
-  }
-
-  function buildGcalcliArgs() {
-    var args = ["gcalcli", "--tsv", "--nocolor", "agenda"]
-    var cals = root.enabledCals
-    if (cals) {
-      for (var i = 0; i < cals.length; i++) args.push("--cal", cals[i])
-    }
-    return args
+    if (!OAuth.isConfigured(tokens)) return
+    Model.fetchAgenda(tokens, enabledCals, function(events) {
+      root.allEvents = events
+      root.barText = Model.formatBarLabel(events)
+      root.barTooltip = Model.formatBarTooltip(events)
+    })
   }
 
   function injectPanel() {
@@ -63,27 +61,6 @@ BarWidget {
     function show(): void { root.open() }
     function hide(): void { root.close() }
     function toggle(): void { root.togglePanel() }
-  }
-
-  Process {
-    id: agendaProc
-    command: root.buildGcalcliArgs()
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var raw = String(text || "").trim()
-        root.allEvents = raw ? Model.parseTsvAgenda(raw) : []
-        root.barText = Model.formatBarLabel(root.allEvents)
-        root.barTooltip = Model.formatBarTooltip(root.allEvents)
-      }
-    }
-    onExited: function(exitCode) {
-      if (exitCode !== 0) {
-        root.allEvents = []
-        root.barText = ""
-        root.barTooltip = "gcalcli error"
-      }
-    }
   }
 
   Timer {
