@@ -158,6 +158,13 @@ Panel {
       function finishIcal() {
         pending--
         if (pending > 0) return
+        // Filter by enabled calendars
+        var enabled = root.enabledCals
+        if (enabled && enabled.length > 0) {
+          allCalEvents = allCalEvents.filter(function(e) {
+            return enabled.indexOf(e.calendar) >= 0
+          })
+        }
         allCalEvents.sort(function(a, b) {
           if (!a.startParsed || !b.startParsed) return 0
           return a.startParsed.getTime() - b.startParsed.getTime()
