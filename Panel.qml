@@ -1006,6 +1006,14 @@ Panel {
                   spacing: Style.space(10)
 
                   Rectangle {
+                    width: Style.space(10)
+                    height: Style.space(10)
+                    radius: Style.space(5)
+                    color: modelData.color || "#4285f4"
+                    anchors.verticalCenter: parent.verticalCenter
+                  }
+
+                  Rectangle {
                     width: Style.space(16)
                     height: Style.space(16)
                     radius: Style.space(3)
@@ -1031,7 +1039,7 @@ Panel {
                     font.family: root.contentFontFamily
                     font.pixelSize: Style.font.body
                     anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - Style.space(16) - Style.space(10)
+                    width: parent.width - Style.space(10) - Style.space(16) - Style.space(10) - Style.space(24) - Style.space(20)
                     elide: Text.ElideRight
                   }
 
@@ -1042,6 +1050,59 @@ Panel {
                     font.family: root.contentFontFamily
                     font.pixelSize: Style.font.caption
                     anchors.verticalCenter: parent.verticalCenter
+                  }
+
+                  Rectangle {
+                    width: Style.space(24)
+                    height: Style.space(24)
+                    radius: Style.space(12)
+                    color: delMouse.containsMouse ? Qt.darker(root.contentForeground, 1.4) : "transparent"
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                      anchors.centerIn: parent
+                      text: "×"
+                      color: delMouse.containsMouse ? root.contentForeground : Qt.darker(root.contentForeground, 1.5)
+                      font.family: root.contentFontFamily
+                      font.pixelSize: Style.font.title
+                      font.bold: true
+                    }
+
+                    MouseArea {
+                      id: delMouse
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      preventStealing: true
+                      cursorShape: Qt.PointingHandCursor
+                      onClicked: {
+                        if (modelData.id === "ical-feed") {
+                          root.icalInput = ""
+                          var entry = { id: root.moduleName }
+                          for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
+                          entry.icalUrl = ""
+                          root.settings = entry
+                          if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
+                          if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+                            root.bar.shell.updateEntryInline(root.moduleName, entry)
+                          root.calendars = []
+                          root.authStatus = "iCal feed removed"
+                          Qt.callLater(root.refresh)
+                        } else {
+                          var entry2 = { id: root.moduleName }
+                          for (var k2 in root.settings) if (k2 !== "id") entry2[k2] = root.settings[k2]
+                          entry2.accessToken = ""
+                          entry2.refreshToken = ""
+                          entry2.tokenExpiry = ""
+                          root.settings = entry2
+                          if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry2
+                          if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+                            root.bar.shell.updateEntryInline(root.moduleName, entry2)
+                          root.calendars = []
+                          root.authStatus = "Google account disconnected"
+                          Qt.callLater(root.refresh)
+                        }
+                      }
+                    }
                   }
                 }
 
