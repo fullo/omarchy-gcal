@@ -313,7 +313,7 @@ function formatDayHeader(dateStr) {
 }
 
 function formatBarLabel(events) {
-    if (!events || events.length === 0) return ""
+    if (!events || events.length === 0) return "󰃭"
     var now = new Date()
     var next = null
     for (var i = 0; i < events.length; i++) {

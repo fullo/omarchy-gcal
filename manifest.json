@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "io.github.fullo.gcal",
-  "name": "Google Calendar",
+  "name": "iCal Calendar",
   "version": "1.0.0",
   "author": "fullo",
   "description": "iCal feed events in the bar and panel (no dependencies)",
@@ -12,8 +12,8 @@
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
-    "displayName": "Google Calendar",
-    "description": "Google Calendar events with Today/Week/Month views",
+    "displayName": "iCal Calendar",
+    "description": "iCal/ICS feed events with Today/Week/Month views",
     "category": "Info",
     "allowMultiple": false
   }

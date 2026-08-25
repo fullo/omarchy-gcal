@@ -46,13 +46,9 @@ Panel {
     return list
   }
 
-  // Auth state
-  property string authStatus: ""
-
   // iCal state
   property string icalInput: ""
   property var clearedUrls: []
-  property bool icalConnecting: false
 
   // Mode
   readonly property string icalUrlRaw: setting("icalUrl", "")
@@ -1074,20 +1070,6 @@ Panel {
                           if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
                           if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
                             root.bar.shell.updateEntryInline(root.moduleName, entry)
-                          root.authStatus = "iCal feed removed"
-                          Qt.callLater(root.refresh)
-                        } else {
-                          var entry2 = { id: root.moduleName }
-                          for (var k2 in root.settings) if (k2 !== "id") entry2[k2] = root.settings[k2]
-                          entry2.accessToken = ""
-                          entry2.refreshToken = ""
-                          entry2.tokenExpiry = ""
-                          root.settings = entry2
-                          if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry2
-                          if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
-                            root.bar.shell.updateEntryInline(root.moduleName, entry2)
-                          root.calendars = []
-                          root.authStatus = "Google account disconnected"
                           Qt.callLater(root.refresh)
                         }
                       }
@@ -1600,7 +1582,6 @@ Panel {
                       if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
                         root.bar.shell.updateEntryInline(root.moduleName, entry)
                       root.icalInput = ""
-                      root.authStatus = "iCal feed added"
                       Qt.callLater(root.refresh)
                     }
                   }
@@ -1639,7 +1620,6 @@ Panel {
                       if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
                         root.bar.shell.updateEntryInline(root.moduleName, entry)
                       root.clearedUrls = []
-                      root.authStatus = "iCal feeds restored"
                       Qt.callLater(root.refresh)
                     }
                   }
@@ -1678,7 +1658,6 @@ Panel {
                       if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
                         root.bar.shell.updateEntryInline(root.moduleName, entry)
                       root.calendars = []
-                      root.authStatus = "All iCal feeds cleared — Undo"
                       Qt.callLater(root.refresh)
                     }
                   }
