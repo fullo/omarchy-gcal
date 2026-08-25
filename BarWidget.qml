@@ -15,10 +15,21 @@ BarWidget {
   property string barTooltip: "Google Calendar"
 
   readonly property bool authenticated: OAuth.isAuthenticated(root.settings)
-  readonly property bool useIcal: !authenticated && setting("icalUrl", "") !== ""
+  readonly property string icalUrlRaw: setting("icalUrl", "")
+  readonly property var icalUrls: {
+    if (!icalUrlRaw || icalUrlRaw === "") return []
+    try {
+      var parsed = JSON.parse(icalUrlRaw)
+      return Array.isArray(parsed) ? parsed : (parsed ? [parsed] : [])
+    } catch(e) {
+      return icalUrlRaw ? [icalUrlRaw] : []
+    }
+  }
+  readonly property bool useIcal: !authenticated && icalUrls.length > 0
   readonly property var enabledCals: Model.settingsEnabledCals(setting("enabledCalendars", ""))
   readonly property bool showNextEvent: setting("showNextEvent", true) !== false
   readonly property bool iconOnly: setting("iconOnly", false) === true
+  readonly property string tooltipMode: setting("tooltipMode", "upcoming") || "upcoming"
 
   function refresh() {
     if (authenticated) {
@@ -34,11 +45,27 @@ BarWidget {
         })
       })
     } else if (useIcal) {
-      var url = setting("icalUrl", "")
-      Model.fetchIcal(url, function(events) {
-        root.allEvents = events
-        _updateBar(events)
-      })
+      var urls = root.icalUrls
+      var merged = []
+      var pending = urls.length
+      function finish() {
+        pending--
+        if (pending > 0) return
+        merged.sort(function(a, b) {
+          if (!a.startParsed || !b.startParsed) return 0
+          return a.startParsed.getTime() - b.startParsed.getTime()
+        })
+        root.allEvents = merged
+        _updateBar(merged)
+      }
+      for (var i = 0; i < urls.length; i++) {
+        (function(url) {
+          Model.fetchIcal(url, function(events) {
+            merged = merged.concat(events)
+            finish()
+          })
+        })(urls[i])
+      }
     } else {
       barText = "󰃭"
       barTooltip = "Google Calendar — click to setup"
@@ -51,7 +78,7 @@ BarWidget {
     } else {
       barText = "󰃭"
     }
-    barTooltip = Model.formatBarTooltip(events)
+    barTooltip = Model.formatBarTooltip(events, tooltipMode)
   }
 
   onShowNextEventChanged: Qt.callLater(function() { _updateBar(root.allEvents) })

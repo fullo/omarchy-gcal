@@ -407,7 +407,14 @@ function formatBarLabel(events) {
     return "󰃭 " + title
 }
 
-function formatBarTooltip(events) {
+function formatBarTooltip(events, mode) {
+    if (mode === "none") return ""
+    if (mode === "date") {
+        var now = new Date()
+        var dn = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
+        var mn = ["January","February","March","April","May","June","July","August","September","October","November","December"]
+        return dn[now.getDay()] + ", " + mn[now.getMonth()] + " " + now.getDate() + " " + now.getFullYear()
+    }
     if (!events || events.length === 0) return "No upcoming events"
     var lines = ["Upcoming (" + events.length + "):"]
     for (var i = 0; i < Math.min(events.length, 5); i++) {

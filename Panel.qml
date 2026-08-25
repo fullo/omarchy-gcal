@@ -27,6 +27,7 @@ Panel {
   // Settings
   readonly property bool showNextEvent: setting("showNextEvent", true) !== false
   readonly property bool iconOnly: setting("iconOnly", false) === true
+  readonly property string tooltipMode: setting("tooltipMode", "upcoming") || "upcoming"
 
   // Auth state
   property bool authenticating: false
@@ -40,7 +41,17 @@ Panel {
 
   // Mode: "ical" (default) or "oauth"
   readonly property bool useOAuth: OAuth.isAuthenticated(root.settings)
-  readonly property bool useIcal: !useOAuth && setting("icalUrl", "") !== ""
+  readonly property string icalUrlRaw: setting("icalUrl", "")
+  readonly property var icalUrls: {
+    if (!icalUrlRaw || icalUrlRaw === "") return []
+    try {
+      var parsed = JSON.parse(icalUrlRaw)
+      return Array.isArray(parsed) ? parsed : (parsed ? [parsed] : [])
+    } catch(e) {
+      return icalUrlRaw ? [icalUrlRaw] : []
+    }
+  }
+  readonly property bool useIcal: !useOAuth && icalUrls.length > 0
 
   // View state
   property int activeTab: 0
@@ -48,7 +59,7 @@ Panel {
   property int viewMonth: new Date().getMonth()
   readonly property string todayKey: Model.dateKeyFromDate(new Date())
   property int monthEventsPage: 0
-  readonly property int monthEventsPerPage: 10
+  readonly property int monthEventsPerPage: 5
 
   // Calendar filter
   readonly property var enabledCals: Model.settingsEnabledCals(setting("enabledCalendars", ""))
@@ -118,19 +129,38 @@ Panel {
         })
       })
     } else if (useIcal) {
-      // iCal feed (read-only)
-      var url = setting("icalUrl", "")
-      Model.fetchIcal(url, function(events) {
+      // iCal feeds (read-only, multiple)
+      var urls = root.icalUrls
+      var allCalEvents = []
+      var pending = urls.length
+      var calsList = []
+      function finishIcal() {
+        pending--
+        if (pending > 0) return
+        allCalEvents.sort(function(a, b) {
+          if (!a.startParsed || !b.startParsed) return 0
+          return a.startParsed.getTime() - b.startParsed.getTime()
+        })
         root.fetchError = ""
-        root.allEvents = events
-        root.todayEvents = Model.eventsForToday(events)
-        root.weekEvents = Model.eventsForThisWeek(events)
+        root.allEvents = allCalEvents
+        root.todayEvents = Model.eventsForToday(allCalEvents)
+        root.weekEvents = Model.eventsForThisWeek(allCalEvents)
         root.eventGroups = Model.groupEventsByDay(root.weekEvents)
-        if (events.length === 0) root.fetchError = "No upcoming events"
-      })
-      // Show the iCal feed as a single calendar
-      var feedName = url.match(/\/ical\/([^/]+)\//)
-      root.calendars = [{ id: "ical-feed", name: feedName ? decodeURIComponent(feedName[1]) : "iCal Feed", access: "read-only" }]
+        root.calendars = calsList
+        if (allCalEvents.length === 0) root.fetchError = "No upcoming events"
+      }
+      for (var ui = 0; ui < urls.length; ui++) {
+        (function(url, idx) {
+          var feedName = url.match(/\/ical\/([^/]+)\//)
+          var calName = feedName ? decodeURIComponent(feedName[1]) : "iCal Feed " + (idx + 1)
+          calsList.push({ id: "ical-" + idx, name: calName, access: "read-only", color: "#2196f3" })
+          Model.fetchIcal(url, function(events) {
+            for (var ei = 0; ei < events.length; ei++) events[ei].calendar = "ical-" + idx
+            allCalEvents = allCalEvents.concat(events)
+            finishIcal()
+          })
+        })(urls[ui], ui)
+      }
     } else {
       root.fetchError = "Add an iCal URL or connect Google Calendar in Setup"
     }
@@ -182,11 +212,16 @@ Panel {
 
   function monthEventsForView() {
     var prefix = root.viewYear + "-" + Model.pad2(root.viewMonth + 1) + "-"
-    var filtered = []
+    var today = Model.dateKeyFromDate(new Date())
+    var future = []
+    var past = []
     for (var i = 0; i < allEvents.length; i++) {
-      if (allEvents[i].date && allEvents[i].date.indexOf(prefix) === 0) filtered.push(allEvents[i])
+      if (allEvents[i].date && allEvents[i].date.indexOf(prefix) === 0) {
+        if (allEvents[i].date >= today) future.push(allEvents[i])
+        else past.push(allEvents[i])
+      }
     }
-    return filtered
+    return future.concat(past)
   }
 
   // ---- OAuth ----
@@ -648,7 +683,7 @@ Panel {
               anchors.horizontalCenter: parent.horizontalCenter
               spacing: Style.space(2)
 
-              // Weekday header (stays fixed at top)
+              // Weekday header
               Row {
                 spacing: root.cellSpacing
                 Item { width: root.weekColumnWidth; height: Style.space(14) }
@@ -672,89 +707,72 @@ Panel {
                 }
               }
 
-              // Scrollable week rows
-              Flickable {
-                id: monthScroll
-                width: parent.width
-                height: root.cellHeight * 3 + Style.space(8)
-                contentWidth: width
-                contentHeight: weekColumn.implicitHeight
-                clip: true
-                flickableDirection: Flickable.VerticalFlick
-                boundsBehavior: Flickable.StopAtBounds
+              // Full week rows
+              Repeater {
+                model: root.weeks
 
-                Column {
-                  id: weekColumn
-                  width: parent.width
-                  spacing: Style.space(2)
+                Row {
+                  required property var modelData
+                  spacing: root.cellSpacing
+
+                  Text {
+                    width: root.weekColumnWidth
+                    height: root.cellHeight
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    text: modelData.week
+                    color: Qt.darker(root.contentForeground, 1.9)
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.caption
+                  }
+
+                  Item { width: Style.space(8); height: root.cellHeight }
 
                   Repeater {
-                    model: root.weeks
+                    model: modelData.days
 
-                    Row {
+                    Rectangle {
                       required property var modelData
-                      spacing: root.cellSpacing
+                      width: root.cellWidth
+                      height: root.cellHeight
+                      radius: Style.cornerRadius
+                      color: dayMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
+                      border.width: modelData.today ? Style.spacing.hairline : 0
+                      border.color: Style.normalBorderFor(root.contentForeground, Color.accent)
+
+                      property int evCount: root.eventsOnDay(modelData.key)
 
                       Text {
-                        width: root.weekColumnWidth
-                        height: root.cellHeight
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                        text: modelData.week
-                        color: Qt.darker(root.contentForeground, 1.9)
+                        anchors.centerIn: parent
+                        text: modelData.day
+                        color: modelData.inMonth
+                          ? (modelData.weekend ? Qt.darker(root.contentForeground, 1.45) : root.contentForeground)
+                          : Qt.darker(root.contentForeground, 2.2)
                         font.family: root.contentFontFamily
-                        font.pixelSize: Style.font.caption
+                        font.pixelSize: Style.font.body
+                        font.bold: modelData.today
                       }
 
-                      Item { width: Style.space(8); height: root.cellHeight }
+                      Rectangle {
+                        visible: evCount > 0 && modelData.inMonth
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: Style.space(2)
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: Math.min(Style.space(16), Style.space(4) + evCount * Style.space(3))
+                        height: Style.space(4)
+                        radius: Style.space(2)
+                        color: Color.accent
+                        opacity: 0.7
+                      }
 
-                      Repeater {
-                        model: modelData.days
-
-                        Rectangle {
-                          required property var modelData
-                          width: root.cellWidth
-                          height: root.cellHeight
-                          radius: Style.cornerRadius
-                          color: dayMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
-                          border.width: modelData.today ? Style.spacing.hairline : 0
-                          border.color: Style.normalBorderFor(root.contentForeground, Color.accent)
-
-                          property int evCount: root.eventsOnDay(modelData.key)
-
-                          Text {
-                            anchors.centerIn: parent
-                            text: modelData.day
-                            color: modelData.inMonth
-                              ? (modelData.weekend ? Qt.darker(root.contentForeground, 1.45) : root.contentForeground)
-                              : Qt.darker(root.contentForeground, 2.2)
-                            font.family: root.contentFontFamily
-                            font.pixelSize: Style.font.body
-                            font.bold: modelData.today
-                          }
-
-                          Rectangle {
-                            visible: evCount > 0 && modelData.inMonth
-                            anchors.bottom: parent.bottom
-                            anchors.bottomMargin: Style.space(2)
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            width: Math.min(Style.space(16), Style.space(4) + evCount * Style.space(3))
-                            height: Style.space(4)
-                            radius: Style.space(2)
-                            color: Color.accent
-                            opacity: 0.7
-                          }
-
-                          MouseArea {
-                            id: dayMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            preventStealing: true
-                            cursorShape: evCount > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
-                            onClicked: {
-                              if (evCount > 0) root.setTab(0)
-                            }
-                          }
+                      MouseArea {
+                        id: dayMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        preventStealing: true
+                        cursorShape: evCount > 0 ? Qt.PointingHandCursor : Qt.ArrowCursor
+                        onClicked: {
+                          if (evCount > 0) root.setTab(0)
                         }
                       }
                     }
@@ -990,20 +1008,19 @@ Panel {
               Rectangle {
                 required property var modelData
                 width: parent.width
-                height: calRow.implicitHeight + Style.space(10)
+                height: Style.space(32)
                 radius: Style.cornerRadius
                 color: calMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
 
                 property bool isEnabled: Model.calendarIsEnabled(modelData.id, root.enabledCals)
 
                 Row {
-                  id: calRow
                   anchors.left: parent.left
-                  anchors.leftMargin: Style.space(10)
-                  anchors.right: parent.right
-                  anchors.rightMargin: Style.space(10)
+                  anchors.leftMargin: Style.space(8)
+                  anchors.right: delArea.left
+                  anchors.rightMargin: Style.space(4)
                   anchors.verticalCenter: parent.verticalCenter
-                  spacing: Style.space(10)
+                  spacing: Style.space(6)
 
                   Rectangle {
                     width: Style.space(10)
@@ -1014,8 +1031,8 @@ Panel {
                   }
 
                   Rectangle {
-                    width: Style.space(16)
-                    height: Style.space(16)
+                    width: Style.space(14)
+                    height: Style.space(14)
                     radius: Style.space(3)
                     border.width: 1
                     border.color: Qt.darker(root.contentForeground, 1.4)
@@ -1039,68 +1056,65 @@ Panel {
                     font.family: root.contentFontFamily
                     font.pixelSize: Style.font.body
                     anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - Style.space(10) - Style.space(16) - Style.space(10) - Style.space(24) - Style.space(20)
+                    width: parent.width - Style.space(10) - Style.space(14) - Style.space(6) * 2
                     elide: Text.ElideRight
                   }
+                }
+
+                Rectangle {
+                  id: delArea
+                  width: Style.space(20)
+                  height: Style.space(20)
+                  radius: Style.space(10)
+                  color: delMouse.containsMouse ? Qt.darker(root.contentForeground, 1.4) : "transparent"
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(8)
+                  anchors.verticalCenter: parent.verticalCenter
 
                   Text {
-                    visible: modelData.access !== ""
-                    text: modelData.access
-                    color: Qt.darker(root.contentForeground, 1.6)
+                    anchors.centerIn: parent
+                    text: "×"
+                    color: delMouse.containsMouse ? root.contentForeground : Qt.darker(root.contentForeground, 1.5)
                     font.family: root.contentFontFamily
-                    font.pixelSize: Style.font.caption
-                    anchors.verticalCenter: parent.verticalCenter
+                    font.pixelSize: Style.font.body
+                    font.bold: true
                   }
 
-                  Rectangle {
-                    width: Style.space(24)
-                    height: Style.space(24)
-                    radius: Style.space(12)
-                    color: delMouse.containsMouse ? Qt.darker(root.contentForeground, 1.4) : "transparent"
-                    anchors.verticalCenter: parent.verticalCenter
-
-                    Text {
-                      anchors.centerIn: parent
-                      text: "×"
-                      color: delMouse.containsMouse ? root.contentForeground : Qt.darker(root.contentForeground, 1.5)
-                      font.family: root.contentFontFamily
-                      font.pixelSize: Style.font.title
-                      font.bold: true
-                    }
-
-                    MouseArea {
-                      id: delMouse
-                      anchors.fill: parent
-                      hoverEnabled: true
-                      preventStealing: true
-                      cursorShape: Qt.PointingHandCursor
-                      onClicked: {
-                        if (modelData.id === "ical-feed") {
-                          root.icalInput = ""
-                          var entry = { id: root.moduleName }
-                          for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
-                          entry.icalUrl = ""
-                          root.settings = entry
-                          if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
-                          if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
-                            root.bar.shell.updateEntryInline(root.moduleName, entry)
-                          root.calendars = []
-                          root.authStatus = "iCal feed removed"
-                          Qt.callLater(root.refresh)
-                        } else {
-                          var entry2 = { id: root.moduleName }
-                          for (var k2 in root.settings) if (k2 !== "id") entry2[k2] = root.settings[k2]
-                          entry2.accessToken = ""
-                          entry2.refreshToken = ""
-                          entry2.tokenExpiry = ""
-                          root.settings = entry2
-                          if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry2
-                          if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
-                            root.bar.shell.updateEntryInline(root.moduleName, entry2)
-                          root.calendars = []
-                          root.authStatus = "Google account disconnected"
-                          Qt.callLater(root.refresh)
-                        }
+                  MouseArea {
+                    id: delMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    preventStealing: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      if (modelData.id.indexOf("ical-") === 0) {
+                        var entry = { id: root.moduleName }
+                        for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
+                        var urls = []
+                        try { urls = JSON.parse(entry.icalUrl || "[]") } catch(e) { urls = entry.icalUrl ? [entry.icalUrl] : [] }
+                        if (!Array.isArray(urls)) urls = [urls]
+                        var idx = parseInt(modelData.id.substring(5))
+                        if (idx >= 0 && idx < urls.length) urls.splice(idx, 1)
+                        entry.icalUrl = JSON.stringify(urls)
+                        root.settings = entry
+                        if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
+                        if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+                          root.bar.shell.updateEntryInline(root.moduleName, entry)
+                        root.authStatus = "iCal feed removed"
+                        Qt.callLater(root.refresh)
+                      } else {
+                        var entry2 = { id: root.moduleName }
+                        for (var k2 in root.settings) if (k2 !== "id") entry2[k2] = root.settings[k2]
+                        entry2.accessToken = ""
+                        entry2.refreshToken = ""
+                        entry2.tokenExpiry = ""
+                        root.settings = entry2
+                        if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry2
+                        if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+                          root.bar.shell.updateEntryInline(root.moduleName, entry2)
+                        root.calendars = []
+                        root.authStatus = "Google account disconnected"
+                        Qt.callLater(root.refresh)
                       }
                     }
                   }
@@ -1317,9 +1331,89 @@ Panel {
                   }
                 }
               }
-            }
 
-            // ---- iCal URL input ----
+              // Tooltip mode selector
+              Column {
+                width: parent.width
+                spacing: Style.space(4)
+
+                Text {
+                  text: "TOOLTIP ON HOVER"
+                  color: Qt.darker(root.contentForeground, 1.4)
+                  font.family: root.contentFontFamily
+                  font.pixelSize: Style.font.caption
+                  font.letterSpacing: 1
+                  font.bold: true
+                }
+
+                Repeater {
+                  model: [
+                    { key: "upcoming", label: "Upcoming events (next 5)" },
+                    { key: "date", label: "Full date (e.g. Tuesday, August 25)" },
+                    { key: "none", label: "Nothing" }
+                  ]
+
+                  Rectangle {
+                    required property var modelData
+                    width: parent.width
+                    height: Style.space(32)
+                    radius: Style.cornerRadius
+                    color: tipMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : "transparent"
+
+                    Row {
+                      anchors.left: parent.left
+                      anchors.leftMargin: Style.space(10)
+                      anchors.verticalCenter: parent.verticalCenter
+                      spacing: Style.space(10)
+
+                      Rectangle {
+                        width: Style.space(14)
+                        height: Style.space(14)
+                        radius: Style.space(7)
+                        border.width: 1
+                        border.color: Qt.darker(root.contentForeground, 1.4)
+                        color: root.tooltipMode === modelData.key ? Color.accent : "transparent"
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        Rectangle {
+                          visible: root.tooltipMode === modelData.key
+                          anchors.centerIn: parent
+                          width: Style.space(6)
+                          height: Style.space(6)
+                          radius: Style.space(3)
+                          color: "white"
+                        }
+                      }
+
+                      Text {
+                        text: modelData.label
+                        color: root.contentForeground
+                        font.family: root.contentFontFamily
+                        font.pixelSize: Style.font.body
+                        anchors.verticalCenter: parent.verticalCenter
+                      }
+                    }
+
+                    MouseArea {
+                      id: tipMouse
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      preventStealing: true
+                      cursorShape: Qt.PointingHandCursor
+                      onClicked: {
+                        var entry = { id: root.moduleName }
+                        for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
+                        entry.tooltipMode = modelData.key
+                        root.settings = entry
+                        if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
+                        if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+                          root.bar.shell.updateEntryInline(root.moduleName, entry)
+                      }
+                    }
+                  }
+                }
+              }
+            }
             Column {
               width: parent.width
               spacing: Style.space(6)
@@ -1335,7 +1429,7 @@ Panel {
 
               Text {
                 width: parent.width
-                text: "Paste your calendar's iCal URL. Find it in Google Calendar → Settings → Calendars → Integrate calendar."
+                text: "Paste your calendar's iCal URL to add a feed. You can add multiple calendars."
                 color: Qt.darker(root.contentForeground, 1.5)
                 font.family: root.contentFontFamily
                 font.pixelSize: Style.font.caption
@@ -1367,42 +1461,49 @@ Panel {
                 spacing: Style.space(6)
 
                 Rectangle {
-                  width: icalSaveLabel.implicitWidth + Style.space(30)
+                  width: icalAddLabel.implicitWidth + Style.space(30)
                   height: Style.space(32)
                   radius: Style.cornerRadius
-                  color: icalSaveMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : Color.accent
+                  color: icalAddMouse.containsMouse ? Style.hoverFillFor(root.contentForeground, Color.accent) : Color.accent
 
                   Text {
-                    id: icalSaveLabel
+                    id: icalAddLabel
                     anchors.centerIn: parent
-                    text: "Save"
+                    text: "Add"
                     color: "white"
                     font.family: root.contentFontFamily
                     font.pixelSize: Style.font.body
                   }
 
                   MouseArea {
-                    id: icalSaveMouse
+                    id: icalAddMouse
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
+                      var url = root.icalInput.trim()
+                      if (url === "") return
                       var entry = { id: root.moduleName }
                       for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
-                      entry.icalUrl = root.icalInput.trim()
+                      var urls = []
+                      try { urls = JSON.parse(entry.icalUrl || "[]") } catch(e) { urls = entry.icalUrl ? [entry.icalUrl] : [] }
+                      if (!Array.isArray(urls)) urls = [urls]
+                      if (urls.indexOf(url) < 0) urls.push(url)
+                      entry.icalUrl = JSON.stringify(urls)
                       root.settings = entry
                       if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
                       if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
                         root.bar.shell.updateEntryInline(root.moduleName, entry)
-                      root.authStatus = root.icalInput.trim() !== "" ? "iCal URL saved" : "iCal URL cleared"
+                      root.icalInput = ""
+                      root.authStatus = "iCal feed added"
                       Qt.callLater(root.refresh)
                     }
                   }
                 }
 
                 Rectangle {
-                  visible: setting("icalUrl", "") !== ""
-                  width: icalClearLabel.implicitWidth + Style.space(30)
+                  visible: root.icalUrls.length > 0
+                  width: icalClearLabel2.implicitWidth + Style.space(30)
                   height: Style.space(32)
                   radius: Style.cornerRadius
                   color: "transparent"
@@ -1410,9 +1511,9 @@ Panel {
                   border.color: Qt.darker(root.contentForeground, 1.4)
 
                   Text {
-                    id: icalClearLabel
+                    id: icalClearLabel2
                     anchors.centerIn: parent
-                    text: "Clear"
+                    text: "Clear all"
                     color: Qt.darker(root.contentForeground, 1.5)
                     font.family: root.contentFontFamily
                     font.pixelSize: Style.font.body
@@ -1426,12 +1527,13 @@ Panel {
                       root.icalInput = ""
                       var entry = { id: root.moduleName }
                       for (var k in root.settings) if (k !== "id") entry[k] = root.settings[k]
-                      entry.icalUrl = ""
+                      entry.icalUrl = "[]"
                       root.settings = entry
                       if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
                       if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
                         root.bar.shell.updateEntryInline(root.moduleName, entry)
-                      root.authStatus = "iCal URL cleared"
+                      root.calendars = []
+                      root.authStatus = "All iCal feeds cleared"
                       Qt.callLater(root.refresh)
                     }
                   }
@@ -1439,9 +1541,9 @@ Panel {
               }
 
               Text {
-                visible: setting("icalUrl", "") !== ""
+                visible: root.icalUrls.length > 0
                 width: parent.width
-                text: "✓ Saved"
+                text: root.icalUrls.length + " feed(s) configured"
                 color: "#4caf50"
                 font.family: root.contentFontFamily
                 font.pixelSize: Style.font.caption
