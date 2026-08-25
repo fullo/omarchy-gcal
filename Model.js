@@ -4,18 +4,18 @@ var CALENDAR_API = "https://www.googleapis.com/calendar/v3"
 // ---- iCal parsing ----
 
 function fetchIcal(url, callback) {
-    if (!url || url === "") { callback([]); return }
+    if (!url || url === "") { callback({ events: [], calName: "" }); return }
     var xhr = new XMLHttpRequest()
     xhr.open("GET", url)
     xhr.timeout = 30000
     xhr.onreadystatechange = function() {
         if (xhr.readyState === 4) {
             if (xhr.status === 200) callback(parseIcal(xhr.responseText))
-            else callback([])
+            else callback({ events: [], calName: "" })
         }
     }
-    xhr.onerror = function() { callback([]) }
-    xhr.ontimeout = function() { callback([]) }
+    xhr.onerror = function() { callback({ events: [], calName: "" }) }
+    xhr.ontimeout = function() { callback({ events: [], calName: "" }) }
     xhr.send()
 }
 
@@ -24,10 +24,14 @@ function parseIcal(raw) {
     var events = []
     var inEvent = false
     var ev = {}
+    var calName = ""
     for (var i = 0; i < lines.length; i++) {
         var line = lines[i].replace(/^\s+|\s+$/g, "")
         if (line === "BEGIN:VEVENT") { inEvent = true; ev = {} }
         else if (line === "END:VEVENT") { inEvent = false; events.push(ev) }
+        else if (!inEvent && line.indexOf("X-WR-CALNAME:") === 0) {
+            calName = unescapeIcal(line.substring(13))
+        }
         else if (inEvent) {
             var colon = line.indexOf(":")
             if (colon < 0) continue
@@ -44,7 +48,7 @@ function parseIcal(raw) {
             else if (bareKey === "URL") ev.link = val
         }
     }
-    return events.filter(function(e) { return e.dtstart }).map(function(e) {
+    var parsed = events.filter(function(e) { return e.dtstart }).map(function(e) {
         var allDay = !e.dtstart.time
         var dateStr = e.dtstart.date
         var startTime = allDay ? "" : e.dtstart.time
@@ -65,6 +69,7 @@ function parseIcal(raw) {
         if (!a.startParsed || !b.startParsed) return 0
         return a.startParsed.getTime() - b.startParsed.getTime()
     })
+    return { events: parsed, calName: calName }
 }
 
 function unfoldLines(raw) {

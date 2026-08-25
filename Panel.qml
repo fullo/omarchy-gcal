@@ -154,9 +154,12 @@ Panel {
       for (var ui = 0; ui < urls.length; ui++) {
         (function(url, idx) {
           var feedName = url.match(/\/ical\/([^/]+)\//)
-          var calName = feedName ? decodeURIComponent(feedName[1]) : "iCal Feed " + (idx + 1)
-          calsList.push({ id: "ical-" + idx, name: calName, access: "read-only", color: icalColors[idx % icalColors.length] })
-          Model.fetchIcal(url, function(events) {
+          var fallbackName = feedName ? decodeURIComponent(feedName[1]) : "iCal Feed " + (idx + 1)
+          calsList.push({ id: "ical-" + idx, name: fallbackName, access: "read-only", color: icalColors[idx % icalColors.length] })
+          Model.fetchIcal(url, function(result) {
+            var events = result.events || []
+            var extractedName = result.calName || ""
+            if (extractedName) calsList[idx].name = extractedName
             for (var ei = 0; ei < events.length; ei++) events[ei].calendar = "ical-" + idx
             allCalEvents = allCalEvents.concat(events)
             finishIcal()
@@ -172,7 +175,10 @@ Panel {
     if (link && link !== "") Qt.openUrlExternally(link)
   }
 
-  function setTab(idx) { root.activeTab = idx }
+  function setTab(idx) {
+    root.activeTab = idx
+    if (idx === 2) Qt.callLater(root.autoPageToToday)
+  }
 
   function moveMonth(delta) {
     var next = Model.stepMonth(viewYear, viewMonth, delta)
@@ -214,16 +220,32 @@ Panel {
 
   function monthEventsForView() {
     var prefix = root.viewYear + "-" + Model.pad2(root.viewMonth + 1) + "-"
-    var today = Model.dateKeyFromDate(new Date())
-    var future = []
-    var past = []
+    var filtered = []
     for (var i = 0; i < allEvents.length; i++) {
-      if (allEvents[i].date && allEvents[i].date.indexOf(prefix) === 0) {
-        if (allEvents[i].date >= today) future.push(allEvents[i])
-        else past.push(allEvents[i])
+      if (allEvents[i].date && allEvents[i].date.indexOf(prefix) === 0)
+        filtered.push(allEvents[i])
+    }
+    filtered.sort(function(a, b) {
+      if (a.date < b.date) return -1
+      if (a.date > b.date) return 1
+      if (!a.startTime && b.startTime) return -1
+      if (a.startTime && !b.startTime) return 1
+      if (a.startTime && b.startTime) return a.startTime < b.startTime ? -1 : 1
+      return 0
+    })
+    return filtered
+  }
+
+  function autoPageToToday() {
+    var events = monthEventsForView()
+    var today = Model.dateKeyFromDate(new Date())
+    for (var j = 0; j < events.length; j++) {
+      if (events[j].date >= today) {
+        root.monthEventsPage = Math.floor(j / root.monthEventsPerPage)
+        return
       }
     }
-    return future.concat(past)
+    root.monthEventsPage = Math.max(0, Math.ceil(events.length / root.monthEventsPerPage) - 1)
   }
 
   // ---- OAuth ----
